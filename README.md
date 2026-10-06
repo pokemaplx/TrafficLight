@@ -1,6 +1,28 @@
-# 🚦 Traffic Light
+<p align="center">
+  <img src="readme_assets/logo.png" alt="Traffic Light" width="180" />
+</p>
 
-Beautiful traffic logging for PGO. 
+<h1 align="center">Traffic Light</h1>
+
+<p align="center">
+  <strong>Beautiful traffic logging for PGO</strong><br />
+  Every request the game makes, decoded in real time, in your terminal or your browser.
+</p>
+
+<p align="center">
+  <img alt="Python" src="https://img.shields.io/badge/python-3.11--3.13-3776AB?logo=python&logoColor=white" />
+  <img alt="Packaging" src="https://img.shields.io/badge/packaging-uv%20%C2%B7%20poetry-60A5FA?logo=poetry&logoColor=white" />
+  <img alt="Docker" src="https://img.shields.io/badge/docker-compose-2496ED?logo=docker&logoColor=white" />
+  <img alt="Outputs" src="https://img.shields.io/badge/outputs-web%20%C2%B7%20tui%20%C2%B7%20print%20%C2%B7%20discord-7FF0D4" />
+</p>
+
+<p align="center">
+  <a href="#web-ui">Web UI</a> ·
+  <a href="#tui">TUI</a> ·
+  <a href="#installation">Installation</a> ·
+  <a href="#docker">Docker</a> ·
+  <a href="#supporting-mitms">Supporting MITMs</a>
+</p>
 
 ## Features
 
