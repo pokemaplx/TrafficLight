@@ -17,12 +17,12 @@
 </p>
 
 <p align="center">
-  <a href="#web-ui">Web UI</a> ·
-  <a href="#tui">TUI</a> ·
-  <a href="#installation">Installation</a> ·
-  <a href="#docker">Docker</a> ·
-  <a href="#supporting-mitms">Supporting MITMs</a>
+  <a href="#web-ui">Web UI</a> · <a href="#tui">TUI</a> · <a href="#installation">Installation</a> · <a href="#docker">Docker</a> · <a href="#supporting-mitms">Supporting MITMs</a>
 </p>
+
+> [!NOTE]
+> This is a modified fork of [ccev/TrafficLight](https://github.com/ccev/TrafficLight) with support for a 
+> [web UI](#web-ui).
 
 ## Features
 
@@ -64,6 +64,8 @@ the clutter
 
 Set `output = "web"` in your config and Traffic Light opens a page in your browser 
 (http://127.0.0.1:3336 by default) instead of the TUI.
+
+![Web UI](readme_assets/web_ui.png)
 
 - A live log that shows the response status of every Proto (i.e. `ENCOUNTER_SUCCESS`) and its size
 - Filter: Text searches method names, message names and content. Narrow it down with `method:` (or `m:`), 
