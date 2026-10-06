@@ -10,6 +10,7 @@ services:
     # environment:
     #   TRAFFICLIGHT_OUTPUT: discord
     #   TRAFFICLIGHT_WEBHOOK: https://discord.com/api/webhooks/...
+    #   TRAFFICLIGHT_WEB_PASSWORD: something-long
     #   TZ: Europe/Lisbon
     # or use your config.toml
     # volumes:

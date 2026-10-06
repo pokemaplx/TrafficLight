@@ -57,6 +57,11 @@ so you can post them to Traffic Light again
 By default, the page can only be opened on your computer. Set `web_host = "0.0.0.0"` to open it from other devices. 
 `web_max_records` sets how many requests are kept (default: 5000).
 
+Set `web_password` before you make the web UI reachable from the internet, it then asks for that password. Logins 
+last 30 days and changing the password logs everyone out. A password is also what lets you open it through a domain: 
+without one, only localhost and IP addresses work, so no website can read your traffic through DNS rebinding. 
+Behind a reverse proxy, keep the original Host header (Coolify and Caddy do, nginx needs `proxy_set_header Host $host;`).
+
 ### Legacy Outputs
 
 There's also an option to simply print all requests or send them to Discord. You can use those 
@@ -97,6 +102,13 @@ then `poetry run trafficlight run` in your TrafficLight root directory
 - Open the web UI at http://localhost:3336 and set your MITM's POST destination to http://{computer IP}:3335
 - Every option from `config.example.toml` can also be set as an environment variable, i.e. `TRAFFICLIGHT_OUTPUT=discord` 
 and `TRAFFICLIGHT_WEBHOOK=...`. Set them in `compose.yaml`, or mount your `config.toml` like shown there
+
+### Coolify
+
+- Create an application from this repository with the `Dockerfile` build pack
+- Ports Exposes: `3336`, that's the web UI Coolify puts behind your domain
+- Ports Mappings: `3335:3335`, so your MITM can reach the receiver at http://{server IP}:3335
+- Environment variables: `TRAFFICLIGHT_WEB_PASSWORD`, since your domain is public
 
 ### Supporting MITMs
 

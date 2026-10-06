@@ -104,6 +104,7 @@
     receiver: $("receiver"),
     receiverUrl: $("receiver-url"),
     shortcutsBtn: $("shortcuts-btn"),
+    logoutBtn: $("logout-btn"),
     pausedNote: $("paused-note"),
     stats: $("stats"),
     methodsPop: $("methods-pop"),
@@ -721,6 +722,10 @@
     ui.inspectorBody.classList.add("loading");
     try {
       const response = await fetch(`api/records/${row.record.id}/${row.index}`, { signal: controller.signal });
+      if (response.status === 401) {
+        location.assign("login");
+        return;
+      }
       if (!response.ok) {
         throw new Error(
           response.status === 404
@@ -1594,6 +1599,9 @@
     if (state.records.length) toast(`Exporting ${plural(state.records.length, "request")}`);
   });
   ui.receiver.addEventListener("click", () => copy(state.receiver, "the receiver address"));
+  ui.logoutBtn.addEventListener("click", () => {
+    fetch("logout", { method: "POST" }).finally(() => location.assign("login"));
+  });
   ui.newPill.addEventListener("click", () => setFollow(true));
 
   ui.logEmpty.addEventListener("click", (event) => {
@@ -1775,6 +1783,12 @@
     socket.addEventListener("message", (event) => handleMessage(JSON.parse(event.data)));
     socket.addEventListener("close", () => {
       setConnected(false);
+      // a session that ran out, or a new password, can't connect anymore
+      fetch("api/session")
+        .then((response) => {
+          if (response.status === 401) location.assign("login");
+        })
+        .catch(() => {});
       setTimeout(connect, reconnectDelay);
       reconnectDelay = Math.min(reconnectDelay * 2, 5000);
     });
@@ -1812,6 +1826,7 @@
         state.receiver = message.receiver;
         ui.receiverUrl.textContent = message.receiver;
         ui.receiver.hidden = false;
+        ui.logoutBtn.hidden = !message.auth;
         setPaused(message.paused);
         resetRecords();
         break;

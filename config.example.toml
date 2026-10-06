@@ -20,3 +20,6 @@ web_open_browser = true
 # Open the web ui in your browser when Traffic Light starts
 web_max_records = 5000
 # How many requests the web ui keeps
+web_password = ""
+# Makes the web ui ask for this password. Leave it empty to not ask for one.
+# Without a password, the web ui only opens through localhost or an IP address, not a domain

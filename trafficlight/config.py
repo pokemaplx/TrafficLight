@@ -4,7 +4,7 @@ import sys
 from enum import Enum
 
 import tomllib
-from pydantic import BaseSettings, PositiveInt, ValidationError
+from pydantic import BaseSettings, PositiveInt, SecretStr, ValidationError
 from pydantic.env_settings import SettingsSourceCallable
 
 
@@ -24,10 +24,14 @@ class Config(BaseSettings):
     web_port: int = 3336
     web_open_browser: bool = True
     web_max_records: PositiveInt = 5000
+    # empty: no login
+    web_password: SecretStr = SecretStr("")
 
     class Config:
         # every option can also be set as an environment variable, i.e. TRAFFICLIGHT_OUTPUT=web
         env_prefix = "trafficlight_"
+        # options that don't exist (anymore) are skipped, like they always were
+        extra = "ignore"
 
         @classmethod
         def customise_sources(

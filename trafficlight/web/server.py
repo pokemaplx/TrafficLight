@@ -16,6 +16,7 @@ from urllib.parse import urlsplit
 from aiohttp import WSMsgType, web
 
 from trafficlight.config import config
+from .auth import COOKIE_NAME, SESSION_SECONDS, Auth
 from .serialize import proto_detail, proto_export, proto_summary
 
 if TYPE_CHECKING:
@@ -28,6 +29,7 @@ STATIC_FILES = {
     "app.js": "text/javascript",
     "style.css": "text/css",
     "logo.png": "image/png",
+    "favicon.ico": "image/x-icon",
 }
 # Inter and JetBrains Mono, licensed under the SIL Open Font License (see static/fonts)
 FONT_FILES = {
@@ -108,19 +110,26 @@ class WebServer:
         self._clients: set[Client] = set()
         self._paused: bool = False
         self._serving: asyncio.Task | None = None
+        self._auth: Auth = Auth(config.web_password.get_secret_value())
         # lets browsers tell a reconnect from a restart
         self._session: str = secrets.token_hex(8)
 
     async def start(self) -> None:
-        app = web.Application(middlewares=[_guard])
+        app = web.Application(middlewares=[_guard(self._auth), _login_required(self._auth)])
         app.add_routes(
             [
                 web.get("/", self._static),
+                # browsers ask for it on their own, i.e. for bookmarks
+                web.get("/favicon.ico", self._static),
                 web.get("/static/{name}", self._static),
                 web.get("/static/fonts/{name}", self._font),
                 web.get("/ws", self._websocket),
                 web.get("/api/records/{record_id}/{proto_index}", self._proto),
                 web.get("/api/export", self._export),
+                web.get("/api/session", self._session_check),
+                web.get("/login", self._login_page),
+                web.post("/login", self._login),
+                web.post("/logout", self._logout),
             ]
         )
 
@@ -135,6 +144,8 @@ class WebServer:
         url = _web_url()
         print(f"Traffic Light is running at {url}")
         print(f"Send your traffic to {_receiver_url()}")
+        if self._auth.enabled:
+            print("The web UI asks for your password")
         print("Press Ctrl+C to quit")
 
         if config.web_open_browser:
@@ -193,6 +204,7 @@ class WebServer:
                 "paused": self._paused,
                 "max_records": config.web_max_records,
                 "receiver": _receiver_url(),
+                "auth": self._auth.enabled,
             }
         )
 
@@ -239,9 +251,38 @@ class WebServer:
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
 
+    async def _login_page(self, request: web.Request) -> web.Response:
+        if not self._auth.enabled or self._auth.valid_session(request.cookies.get(COOKIE_NAME)):
+            raise web.HTTPFound("/")
+
+        return web.Response(
+            body=(STATIC_DIR / "login.html").read_bytes(), content_type="text/html", charset="utf-8", headers=NO_CACHE
+        )
+
+    async def _login(self, request: web.Request) -> web.Response:
+        password = (await request.post()).get("password")
+        if self._auth.enabled and not (isinstance(password, str) and await self._auth.check_password(password)):
+            return web.Response(status=303, headers={"Location": "/login?error"})
+
+        response = web.Response(status=303, headers={"Location": "/"})
+        if self._auth.enabled:
+            _set_session_cookie(request, response, self._auth.new_session(), SESSION_SECONDS)
+        return response
+
+    @staticmethod
+    async def _logout(request: web.Request) -> web.Response:
+        response = web.Response(status=303, headers={"Location": "/login"})
+        _set_session_cookie(request, response, "", 0)
+        return response
+
+    @staticmethod
+    async def _session_check(_: web.Request) -> web.Response:
+        # only reachable with a valid session, see _login_required
+        return web.Response(status=204)
+
     @staticmethod
     async def _static(request: web.Request) -> web.Response:
-        name = request.match_info.get("name", "index.html")
+        name = request.match_info.get("name", request.path.lstrip("/") or "index.html")
         content_type = STATIC_FILES.get(name)
         if content_type is None:
             raise web.HTTPNotFound()
@@ -272,22 +313,54 @@ def _records_message(summaries: list[str], message_type: str = "records") -> str
     return '{"type": "' + message_type + '", "records": [' + ", ".join(summaries) + "]}"
 
 
-@web.middleware
-async def _guard(
-    request: web.Request, handler: Callable[[web.Request], Awaitable[web.StreamResponse]]
-) -> web.StreamResponse:
+def _guard(auth: Auth) -> Callable[..., Awaitable[web.StreamResponse]]:
     """
     The UI shows your game traffic, so other websites must not be able to read it.
-    Checking Host prevents DNS rebinding, checking Origin prevents cross-site websockets.
+    Checking Origin prevents cross-site websockets. Without a password, checking Host prevents DNS rebinding,
+    with one, the session cookie does: it never goes to another domain.
     """
-    if not _is_trusted_host(_hostname(request.host)):
-        raise web.HTTPForbidden(text="Open Traffic Light through localhost or an IP address")
 
-    origin = request.headers.get("Origin")
-    if origin is not None and urlsplit(origin).netloc.lower() != request.host.lower():
-        raise web.HTTPForbidden(text="Forbidden")
+    @web.middleware
+    async def middleware(
+        request: web.Request, handler: Callable[[web.Request], Awaitable[web.StreamResponse]]
+    ) -> web.StreamResponse:
+        if not auth.enabled and not _is_trusted_host(_hostname(request.host)):
+            raise web.HTTPForbidden(
+                text="Open Traffic Light through localhost or an IP address, or set a password to use a domain"
+            )
 
-    return await handler(request)
+        origin = request.headers.get("Origin")
+        if origin is not None and urlsplit(origin).netloc.lower() != request.host.lower():
+            raise web.HTTPForbidden(text="Forbidden")
+
+        return await handler(request)
+
+    return middleware
+
+
+def _login_required(auth: Auth) -> Callable[..., Awaitable[web.StreamResponse]]:
+    @web.middleware
+    async def middleware(
+        request: web.Request, handler: Callable[[web.Request], Awaitable[web.StreamResponse]]
+    ) -> web.StreamResponse:
+        # the static files are in the public repository anyway, the login page needs them
+        public = request.path in ("/login", "/favicon.ico") or request.path.startswith("/static/")
+        if not auth.enabled or public or auth.valid_session(request.cookies.get(COOKIE_NAME)):
+            return await handler(request)
+
+        if request.path == "/":
+            raise web.HTTPFound("/login")
+        raise web.HTTPUnauthorized(text="Log in first")
+
+    return middleware
+
+
+def _set_session_cookie(request: web.Request, response: web.Response, session: str, max_age: int) -> None:
+    # behind a proxy like Coolify's, the browser talks https to the proxy and the proxy http to us
+    https = request.secure or request.headers.get("X-Forwarded-Proto", "").split(",")[0].strip() == "https"
+    response.set_cookie(
+        COOKIE_NAME, session, max_age=max_age, path="/", httponly=True, samesite="Lax", secure=https or None
+    )
 
 
 def _hostname(netloc: str) -> str | None:

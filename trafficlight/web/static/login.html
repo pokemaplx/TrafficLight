@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Log in · Traffic Light</title>
+  <link rel="icon" href="favicon.ico?v=2" sizes="16x16 32x32 48x48">
+  <link rel="icon" type="image/png" href="static/logo.png?v=2" sizes="192x192">
+  <script>
+    // same theme as the rest of the UI, before the first paint
+    (function () {
+      var theme = "system";
+      try { theme = JSON.parse(localStorage.getItem("trafficlight") || "{}").theme || theme; } catch (e) {}
+      if (theme !== "light" && theme !== "dark") theme = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+      document.documentElement.dataset.theme = theme;
+    })();
+  </script>
+  <link rel="stylesheet" href="static/style.css">
+</head>
+<body class="login-page">
+  <form class="login-card" method="post" action="login" id="login-form">
+    <img class="logo" src="static/logo.png" alt="" width="64" height="64">
+    <h1>Traffic Light</h1>
+    <p class="muted">Enter the password to see the traffic</p>
+    <!-- lets password managers remember the login -->
+    <input type="text" name="username" value="trafficlight" autocomplete="username" hidden>
+    <input class="login-input" type="password" name="password" placeholder="Password" aria-label="Password"
+           autocomplete="current-password" autofocus required>
+    <p class="login-error" id="login-error" role="alert" hidden>Wrong password</p>
+    <button class="btn login-button" type="submit" id="login-button">Log in</button>
+  </form>
+  <script>
+    if (new URLSearchParams(location.search).has("error")) document.getElementById("login-error").hidden = false;
+    document.getElementById("login-form").addEventListener("submit", function () {
+      var button = document.getElementById("login-button");
+      button.disabled = true;
+      button.textContent = "Logging in…";
+    });
+  </script>
+</body>
+</html>

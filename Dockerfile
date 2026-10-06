@@ -40,4 +40,7 @@ USER trafficlight
 EXPOSE 3335 3336
 # Traffic Light quits cleanly on Ctrl+C
 STOPSIGNAL SIGINT
+# healthy once the receiver takes requests, which it does with every output. An empty list doesn't add a record
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD ["python", "-c", "import os, urllib.request; urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:%s/' % os.environ.get('TRAFFICLIGHT_PORT', '3335'), data=b'[]'), timeout=4)"]
 CMD ["trafficlight", "run"]
