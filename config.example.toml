@@ -2,10 +2,19 @@ host = "0.0.0.0"
 port = 3335
 # Host and Port for the Receiver
 
-output = "ui/print/discord"
+output = "ui/web/print/discord"
 # ui      = cool interactive ui
+# web     = cool interactive ui in your browser
 # print   = simple log
 # discord = discord webhooks
 
 webhook = ""
 # your webhook url in case you set "discord" for output
+
+web_host = "127.0.0.1"
+web_port = 3336
+# Host and Port for the web ui in case you set "web" for output. Use "0.0.0.0" to open it from other devices
+web_open_browser = true
+# Open the web ui in your browser when Traffic Light starts
+web_max_records = 5000
+# How many requests the web ui keeps

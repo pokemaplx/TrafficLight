@@ -38,6 +38,25 @@ the clutter
 - Empty Log: Clears the Log
 - Copy Inspected: Copies the text from the Inspected View
 
+### Web UI
+
+Set `output = "web"` in your config and Traffic Light opens a page in your browser 
+(http://127.0.0.1:3336 by default) instead of the TUI.
+
+- A live log that shows the response status of every Proto (i.e. `ENCOUNTER_SUCCESS`) and its size
+- Filter: Text searches method names, message names and content. Narrow it down with `method:` (or `m:`), 
+`msg:` and `status:` (or `s:`), exclude with `-`, use `"quotes"` for phrases and `/.../` for regular expressions, 
+i.e. `-m:GET_MAP_OBJECTS status:ERROR`. Values after `method:`, `msg:` and `status:` autocomplete
+- Methods: See how often every method was called. Hide the noisy ones or only show the ones you care about
+- Inspect View: A collapsible tree with field types, enum names and their values, or the plain JSON and Text. 
+Search matches are highlighted and expanded
+- Copy any message as JSON, Text or base64, or export the whole log. Exports use the same format MITMs send, 
+so you can post them to Traffic Light again
+- Pause, Follow, First Proto Only and Clear work like in the TUI. Press `?` to see every keyboard shortcut
+
+By default, the page can only be opened on your computer. Set `web_host = "0.0.0.0"` to open it from other devices. 
+`web_max_records` sets how many requests are kept (default: 5000).
+
 ### Legacy Outputs
 
 There's also an option to simply print all requests or send them to Discord. You can use those 

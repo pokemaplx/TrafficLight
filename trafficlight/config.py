@@ -4,11 +4,12 @@ import sys
 from enum import Enum
 
 import tomllib
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, PositiveInt, ValidationError
 
 
 class Output(Enum):
     UI = "ui"
+    WEB = "web"
     PRINT = "print"
     DISCORD = "discord"
 
@@ -18,6 +19,10 @@ class Config(BaseModel):
     port: int = 3335
     output: Output = Output.UI
     webhook: str = ""
+    web_host: str = "127.0.0.1"
+    web_port: int = 3336
+    web_open_browser: bool = True
+    web_max_records: PositiveInt = 5000
 
 
 try:
