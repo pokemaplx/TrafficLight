@@ -64,7 +64,7 @@ if you don't like the UI.
 
 ## TrafficLight CLI
 
-- `trafficlight run` to run the TUI
+- `trafficlight run` to run the TUI (or the output you set in your config)
 - `trafficlight show MESSAGENAME` to show the definition for any Message to Enum. Uses fuzzy search to display 
 the closest match
 
@@ -76,18 +76,27 @@ the closest match
 
 - `pipx install git+https://github.com/ccev/TrafficLight`
   - I highly recommend using pipx. You can install it using `pip install pipx`. If you prefer, you can also use pip instead
+  - With [uv](https://docs.astral.sh/uv/), run `uv tool install` with the same URL instead
 - If you installed pipx correctly, the `trafficlight` command will now be available in your PATH
 - Running the TUI opens its endpoint at port `3335` of your computer. You can now open a supported MITM on your phone.
 
 ### Locally
 
 - Clone repo, copy `config.example.toml` to `config.toml`, fill out the config
-- Make sure you use python 3.11+
-- [install Poetry](https://python-poetry.org/docs/#installation) if you haven't already
-- Run `poetry install`
-- To start, run `poetry run trafficlight run` in your TrafficLight root directory
+- Make sure you use python 3.11, 3.12 or 3.13
+- With [uv](https://docs.astral.sh/uv/getting-started/installation/): run `uv run trafficlight run` in your TrafficLight 
+root directory. The first run installs everything, and uv picks a fitting Python version for you
+- With Poetry: [install Poetry](https://python-poetry.org/docs/#installation) if you haven't already, run `poetry install`, 
+then `poetry run trafficlight run` in your TrafficLight root directory
 - Open a supported MITM on your phone. Set POST destination to your endpoint from config.toml
 (default: http://{computer IP}:3335)
+
+### Docker
+
+- Run `docker compose up --build` in your TrafficLight root directory
+- Open the web UI at http://localhost:3336 and set your MITM's POST destination to http://{computer IP}:3335
+- Every option from `config.example.toml` can also be set as an environment variable, i.e. `TRAFFICLIGHT_OUTPUT=discord` 
+and `TRAFFICLIGHT_WEBHOOK=...`. Set them in `compose.yaml`, or mount your `config.toml` like shown there
 
 ### Supporting MITMs
 

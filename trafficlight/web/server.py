@@ -23,7 +23,19 @@ if TYPE_CHECKING:
 
 STATIC_DIR = Path(__file__).parent / "static"
 # content types are set explicitly because Windows' registry sometimes maps .js to text/plain
-STATIC_FILES = {"index.html": "text/html", "app.js": "text/javascript", "style.css": "text/css"}
+STATIC_FILES = {
+    "index.html": "text/html",
+    "app.js": "text/javascript",
+    "style.css": "text/css",
+    "logo.png": "image/png",
+}
+# Inter and JetBrains Mono, licensed under the SIL Open Font License (see static/fonts)
+FONT_FILES = {
+    "inter-latin.woff2",
+    "inter-latin-ext.woff2",
+    "jetbrains-mono-latin.woff2",
+    "jetbrains-mono-latin-ext.woff2",
+}
 NO_CACHE = {"Cache-Control": "no-cache"}
 WILDCARD_HOSTS = ("", "0.0.0.0", "::")
 
@@ -55,7 +67,7 @@ class Record:
     def export(self) -> dict[str, Any]:
         # same shape mitms send, so an export can be posted to Traffic Light again
         return {
-            "time": datetime.fromtimestamp(self.time).isoformat(timespec="milliseconds"),
+            "time": datetime.fromtimestamp(self.time).astimezone().isoformat(timespec="milliseconds"),
             "rpcid": self.rpc_id,
             "rpcstatus": self.rpc_status,
             "rpchandle": self.rpc_handle,
@@ -95,6 +107,7 @@ class WebServer:
         self._next_id: int = 1
         self._clients: set[Client] = set()
         self._paused: bool = False
+        self._serving: asyncio.Task | None = None
         # lets browsers tell a reconnect from a restart
         self._session: str = secrets.token_hex(8)
 
@@ -104,6 +117,7 @@ class WebServer:
             [
                 web.get("/", self._static),
                 web.get("/static/{name}", self._static),
+                web.get("/static/fonts/{name}", self._font),
                 web.get("/ws", self._websocket),
                 web.get("/api/records/{record_id}/{proto_index}", self._proto),
                 web.get("/api/export", self._export),
@@ -116,6 +130,7 @@ class WebServer:
             await web.TCPSite(runner, config.web_host, config.web_port).start()
         except OSError as e:
             raise SystemExit(f"Couldn't start the web UI on {config.web_host}:{config.web_port}: {e}")
+        self._serving = asyncio.create_task(self._serve(runner))
 
         url = _web_url()
         print(f"Traffic Light is running at {url}")
@@ -124,6 +139,14 @@ class WebServer:
 
         if config.web_open_browser:
             await asyncio.get_running_loop().run_in_executor(None, webbrowser.open, url)
+
+    @staticmethod
+    async def _serve(runner: web.AppRunner) -> None:
+        # runs until Traffic Light quits, then closes the server
+        try:
+            await asyncio.Event().wait()
+        finally:
+            await runner.cleanup()
 
     def add_record(self, rpc_id: int, rpc_status: int, protos: list[Proto], rpc_handle: int | None = None) -> None:
         if self._paused:
@@ -223,7 +246,25 @@ class WebServer:
         if content_type is None:
             raise web.HTTPNotFound()
 
-        return web.Response(text=(STATIC_DIR / name).read_text("utf-8"), content_type=content_type, headers=NO_CACHE)
+        return web.Response(
+            body=(STATIC_DIR / name).read_bytes(),
+            content_type=content_type,
+            charset="utf-8" if content_type.startswith("text/") else None,
+            headers=NO_CACHE,
+        )
+
+    @staticmethod
+    async def _font(request: web.Request) -> web.Response:
+        name = request.match_info["name"]
+        if name not in FONT_FILES:
+            raise web.HTTPNotFound()
+
+        # fonts never change, unlike the rest of the page
+        return web.Response(
+            body=(STATIC_DIR / "fonts" / name).read_bytes(),
+            content_type="font/woff2",
+            headers={"Cache-Control": "max-age=604800"},
+        )
 
 
 def _records_message(summaries: list[str], message_type: str = "records") -> str:
@@ -284,8 +325,14 @@ def _web_url() -> str:
 def _receiver_url() -> str:
     host = config.host
     if host in WILDCARD_HOSTS:
-        host = _lan_ip()
+        # a container only knows its own address, not the one of the computer it runs on
+        host = "<your computer's IP>" if _in_container() else _lan_ip()
     return _url(host, config.port)
+
+
+def _in_container() -> bool:
+    # docker and podman create these
+    return Path("/.dockerenv").exists() or Path("/run/.containerenv").exists()
 
 
 def _lan_ip() -> str:

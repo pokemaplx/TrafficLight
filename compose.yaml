@@ -1,0 +1,16 @@
+services:
+  trafficlight:
+    build: .
+    ports:
+      # your MITM sends its traffic here
+      - "3335:3335"
+      # the web UI. Only this computer can open it, remove "127.0.0.1:" to allow other devices
+      - "127.0.0.1:3336:3336"
+    # every option of config.toml works as an environment variable too
+    # environment:
+    #   TRAFFICLIGHT_OUTPUT: discord
+    #   TRAFFICLIGHT_WEBHOOK: https://discord.com/api/webhooks/...
+    #   TZ: Europe/Lisbon
+    # or use your config.toml
+    # volumes:
+    #   - ./config.toml:/app/config.toml:ro

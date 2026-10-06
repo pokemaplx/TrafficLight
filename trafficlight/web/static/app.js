@@ -12,14 +12,10 @@
   const STORAGE_KEY = "trafficlight";
   const QUERY_KEYS = { method: "method", m: "method", msg: "msg", message: "msg", status: "status", s: "status" };
   const TABS = ["tree", "json", "text"];
+  // the columns the log can be sorted by, and whether a column sorts descending when it's picked
+  const SORT_FIRST_DESC = { time: false, method: false, status: false, size: true };
   const THEMES = ["system", "light", "dark"];
-  const THEME_ICONS = {
-    system:
-      '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill-rule="evenodd" d="M8 1a7 7 0 1 1 0 14A7 7 0 0 1 8 1Zm0 1.5v11a5.5 5.5 0 0 0 0-11Z"/></svg>',
-    light:
-      '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 4.5a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7ZM7.25 0h1.5v2.5h-1.5zM7.25 13.5h1.5V16h-1.5zM0 7.25h2.5v1.5H0zM13.5 7.25H16v1.5h-2.5zM2.1 3.16l1.06-1.06 1.77 1.77-1.06 1.06zM11.07 12.13l1.06-1.06 1.77 1.77-1.06 1.06zM2.1 12.84l1.77-1.77 1.06 1.06-1.77 1.77zM11.07 3.87l1.77-1.77 1.06 1.06-1.77 1.77z"/></svg>',
-    dark: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.2 1.2a6.8 6.8 0 1 0 8.6 8.6A5.6 5.6 0 0 1 6.2 1.2Z"/></svg>',
-  };
+  const THEME_NAMES = { system: "System theme", light: "Light theme", dark: "Dark theme" };
 
   // [regex, css class per capture group]
   const JSON_SYNTAX = [
@@ -79,15 +75,17 @@
     helpBtn: $("help-btn"),
     methodsBtn: $("methods-btn"),
     methodsBadge: $("methods-badge"),
-    firstBtn: $("first-btn"),
+    firstOnly: $("first-only"),
     pauseBtn: $("pause-btn"),
-    followBtn: $("follow-btn"),
+    follow: $("follow"),
     clearBtn: $("clear-btn"),
     themeBtn: $("theme-btn"),
+    exportBtn: $("export-btn"),
     main: $("main"),
     viewport: $("viewport"),
     sizer: $("sizer"),
     rows: $("rows"),
+    logHead: $("log-head"),
     logEmpty: $("log-empty"),
     newPill: $("new-pill"),
     splitter: $("splitter"),
@@ -104,6 +102,8 @@
     copyTextBtn: $("copy-text-btn"),
     conn: $("conn"),
     receiver: $("receiver"),
+    receiverUrl: $("receiver-url"),
+    shortcutsBtn: $("shortcuts-btn"),
     pausedNote: $("paused-note"),
     stats: $("stats"),
     methodsPop: $("methods-pop"),
@@ -124,8 +124,12 @@
     types: true,
     listWidth: null,
     methods: { mode: "exclude", list: [] },
+    sort: { key: "time", desc: false },
     ...readPrefs(),
   };
+  if (!(prefs.sort?.key in SORT_FIRST_DESC) || typeof prefs.sort.desc !== "boolean") {
+    prefs.sort = { key: "time", desc: false };
+  }
   if (!THEMES.includes(prefs.theme)) prefs.theme = "system";
   if (!TABS.includes(prefs.tab)) prefs.tab = "tree";
   if (typeof prefs.query !== "string") prefs.query = "";
@@ -159,6 +163,7 @@
     selected: null, // row highlighted in the log
     inspected: null, // row shown in the inspector
     restoreKey: null, // selection to restore after reconnecting
+    restoreFollow: true, // whether the log followed before reconnecting
     follow: true,
     unseen: 0,
     query: parseQuery(prefs.query),
@@ -272,6 +277,8 @@
 
   // ------------------------------------------------------------------ records
 
+  let rowSequence = 0; // arrival order
+
   function makeRow(record, proto, index) {
     const inner = proto.proxy || proto;
     const method = inner.method || `UNKNOWN_${inner.value}`;
@@ -289,6 +296,7 @@
 
     const row = {
       key: `${record.id}:${index}`,
+      seq: rowSequence++,
       record,
       index,
       proto,
@@ -348,16 +356,20 @@
         added.push(row);
       }
     }
-    trimRecords();
-
-    let matching = 0;
-    for (const row of added) {
-      if (row.dropped || !matches(row)) continue;
-      state.visible.push(row);
-      matching++;
-    }
-    if (!history && !state.follow && matching && state.visible.length * ROW_HEIGHT > ui.viewport.clientHeight) {
-      state.unseen += matching;
+    let matching = [];
+    keepInView(() => {
+      trimRecords();
+      matching = added.filter((row) => !row.dropped && matches(row));
+      insertVisible(matching);
+    });
+    if (
+      !history &&
+      !state.follow &&
+      followEdge() &&
+      matching.length &&
+      state.visible.length * ROW_HEIGHT > ui.viewport.clientHeight
+    ) {
+      state.unseen += matching.length;
     }
 
     if (state.restoreKey) {
@@ -366,7 +378,9 @@
         state.restoreKey = null;
         state.selected = row;
         const position = state.visible.indexOf(row);
-        if (!state.follow && position !== -1) {
+        // the log is empty for a moment while reconnecting, which looks like being scrolled to the bottom
+        if (!state.restoreFollow && position !== -1) {
+          setFollow(false);
           updateSizer();
           center(position);
         }
@@ -394,14 +408,8 @@
       }
     }
     state.rows.splice(0, droppedRows);
-
-    let droppedVisible = 0;
-    while (droppedVisible < state.visible.length && state.visible[droppedVisible].dropped) droppedVisible++;
-    if (droppedVisible) {
-      state.visible.splice(0, droppedVisible);
-      // keep the same rows in view
-      if (!state.follow) ui.viewport.scrollTop -= droppedVisible * ROW_HEIGHT;
-    }
+    // depending on the sorting, dropped rows can be anywhere in the log
+    state.visible = state.visible.filter((row) => !row.dropped);
   }
 
   function resetRecords() {
@@ -418,6 +426,7 @@
 
   function refilter() {
     state.visible = state.rows.filter(matches);
+    if (!sortedByArrival()) state.visible.sort(compareRows);
     state.unseen = 0;
     updateNewPill();
     updateSizer();
@@ -428,6 +437,100 @@
       if (position !== -1) center(position);
     }
     scheduleRender();
+  }
+
+  // ------------------------------------------------------------------ sorting
+
+  const compareText = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+  const SORT_COMPARE = {
+    time: (a, b) => a.seq - b.seq,
+    method: (a, b) => compareText(a.method, b.method),
+    status: (a, b) => compareText(a.badge?.text ?? "", b.badge?.text ?? ""),
+    size: (a, b) => a.proto.response.size - b.proto.response.size,
+  };
+
+  function compareRows(a, b) {
+    const { key, desc } = prefs.sort;
+    // rows without a status go last either way
+    if (key === "status" && !a.badge !== !b.badge) return a.badge ? -1 : 1;
+    const result = SORT_COMPARE[key](a, b);
+    return (desc ? -result : result) || a.seq - b.seq;
+  }
+
+  const sortedByArrival = () => prefs.sort.key === "time" && !prefs.sort.desc;
+
+  // where new rows show up, so where following sticks to. Other columns put them anywhere
+  function followEdge() {
+    if (prefs.sort.key !== "time") return null;
+    return prefs.sort.desc ? "top" : "bottom";
+  }
+
+  function edgePosition() {
+    const edge = followEdge();
+    return edge === "top" ? 0 : edge === "bottom" ? state.visible.length - 1 : -1;
+  }
+
+  function insertVisible(rows) {
+    if (sortedByArrival()) {
+      for (const row of rows) state.visible.push(row);
+    } else if (rows.length > 64) {
+      for (const row of rows) state.visible.push(row);
+      state.visible.sort(compareRows);
+    } else {
+      for (const row of rows) state.visible.splice(insertionPoint(row), 0, row);
+    }
+  }
+
+  function insertionPoint(row) {
+    let low = 0;
+    let high = state.visible.length;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (compareRows(state.visible[middle], row) <= 0) low = middle + 1;
+      else high = middle;
+    }
+    return low;
+  }
+
+  // keeps the rows in view where they are while rows are added or removed above them
+  function keepInView(change) {
+    const viewport = ui.viewport;
+    const anchorPosition = Math.floor(viewport.scrollTop / ROW_HEIGHT);
+    const anchor = state.follow ? null : state.visible[anchorPosition];
+    const offset = viewport.scrollTop - anchorPosition * ROW_HEIGHT;
+    change();
+
+    const position = anchor ? state.visible.indexOf(anchor) : -1;
+    if (position !== -1 && position !== anchorPosition) {
+      updateSizer();
+      viewport.scrollTop = position * ROW_HEIGHT + offset;
+    }
+  }
+
+  function setSort(key) {
+    prefs.sort = { key, desc: key === prefs.sort.key ? !prefs.sort.desc : SORT_FIRST_DESC[key] };
+    savePrefs();
+    updateSortUi();
+
+    // show the selection, otherwise the newest rows, otherwise the top
+    const edge = followEdge();
+    setFollow(!state.selected && edge !== null);
+    refilter();
+    if (!state.selected && !edge) ui.viewport.scrollTop = 0;
+  }
+
+  function updateSortUi() {
+    for (const button of ui.logHead.querySelectorAll("[data-sort]")) {
+      const active = button.dataset.sort === prefs.sort.key;
+      button.classList.toggle("active", active);
+      button.classList.toggle("desc", active ? prefs.sort.desc : SORT_FIRST_DESC[button.dataset.sort]);
+    }
+
+    const canFollow = followEdge() !== null;
+    const label = ui.follow.closest(".check");
+    ui.follow.disabled = !canFollow;
+    label.classList.toggle("disabled", !canFollow);
+    label.title = canFollow ? "Keep scrolling to new requests (f)" : "Following only works when sorting by time";
   }
 
   // ------------------------------------------------------------------ log
@@ -450,7 +553,7 @@
   function renderList() {
     const viewport = ui.viewport;
     updateSizer();
-    if (state.follow) viewport.scrollTop = viewport.scrollHeight;
+    if (state.follow) viewport.scrollTop = followEdge() === "top" ? 0 : viewport.scrollHeight;
 
     const first = Math.max(0, Math.floor(viewport.scrollTop / ROW_HEIGHT) - OVERSCAN);
     const last = Math.min(
@@ -514,7 +617,7 @@
         '<button class="btn" type="button" data-action="reset-filters">Reset filters</button>';
     } else if (key !== null) {
       ui.logEmpty.innerHTML =
-        '<div class="icon" aria-hidden="true">🚦</div><div class="title">Waiting for traffic…</div>' +
+        '<img class="logo" src="static/logo.png" alt="" width="56" height="56"><div class="title">Waiting for traffic…</div>' +
         `<div>Set your MITM's POST destination to <code>${escapeHtml(state.receiver)}</code></div>`;
     }
   }
@@ -522,22 +625,27 @@
   function renderStats() {
     const total = state.rows.length;
     const shown = state.visible.length;
-    const protos = shown === total ? plural(total, "proto") : `${numberFormat.format(shown)} of ${plural(total, "proto")}`;
-    ui.stats.textContent = `${protos} · ${plural(state.records.length, "request")}`;
+    const count = (n, word) => `<b>${numberFormat.format(n)}</b> ${word}${n === 1 ? "" : "s"}`;
+    const protos = shown === total ? count(total, "proto") : `<b>${numberFormat.format(shown)}</b> of ${count(total, "proto")}`;
+    ui.stats.innerHTML = `${protos}<span class="sep">·</span>${count(state.records.length, "request")}`;
   }
 
   function updateNewPill() {
     const show = !state.follow && state.unseen > 0;
+    const top = followEdge() === "top";
     ui.newPill.hidden = !show;
-    if (show) ui.newPill.textContent = `↓ ${plural(state.unseen, "new proto")}`;
+    ui.newPill.classList.toggle("top", top);
+    if (show) ui.newPill.textContent = `${top ? "↑" : "↓"} ${plural(state.unseen, "new proto")}`;
   }
 
   function setFollow(follow) {
+    // sorted by anything but time, new rows show up all over the log
+    follow = follow && followEdge() !== null;
     state.follow = follow;
-    ui.followBtn.setAttribute("aria-pressed", String(follow));
+    ui.follow.checked = follow;
     if (follow) {
       state.unseen = 0;
-      // rendering scrolls to the bottom while following
+      // rendering scrolls to the newest rows while following
       scheduleRender();
     }
     updateNewPill();
@@ -558,7 +666,7 @@
 
     const target = clamp(position, 0, count - 1);
     // looking at older rows stops following, going to the newest one keeps it as it is
-    if (target < count - 1) setFollow(false);
+    if (target !== edgePosition()) setFollow(false);
     select(state.visible[target]);
     reveal(target);
   }
@@ -1247,6 +1355,7 @@
     const methods = [...counts]
       .filter(([method]) => method.toLowerCase().includes(query))
       .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    const busiest = Math.max(1, ...counts.values());
 
     ui.methodsList.innerHTML = methods.length
       ? methods
@@ -1254,9 +1363,10 @@
             const shown = methodShown(method);
             return (
               `<li data-method="${escapeHtml(method)}" class="${shown ? "" : "off"}" title="Click to ${shown ? "hide" : "show"}">` +
-              `<input type="checkbox" tabindex="-1" ${shown ? "checked" : ""}>` +
+              `<input type="checkbox" class="cb" tabindex="-1" ${shown ? "checked" : ""}>` +
               `<span class="name">${escapeHtml(method)}</span>` +
               '<button class="only" type="button" title="Only show this method">only</button>' +
+              `<span class="meter"><span style="width: ${((count / busiest) * 100).toFixed(1)}%"></span></span>` +
               `<span class="count">${numberFormat.format(count)}</span></li>`
             );
           })
@@ -1338,8 +1448,11 @@
   function openPopover(popover, anchor) {
     closePopovers();
     popover.hidden = false;
+    popover._anchor = anchor;
     const rect = anchor.getBoundingClientRect();
-    popover.style.top = `${rect.bottom + 6}px`;
+    // below the anchor, or above it if it sits at the bottom of the window
+    const fitsBelow = rect.bottom + 6 + popover.offsetHeight <= window.innerHeight - 8;
+    popover.style.top = `${fitsBelow ? rect.bottom + 6 : Math.max(8, rect.top - 6 - popover.offsetHeight)}px`;
     popover.style.left = `${clamp(rect.left, 8, window.innerWidth - popover.offsetWidth - 8)}px`;
   }
 
@@ -1354,17 +1467,16 @@
     return closed;
   }
 
-  function toggleHelp() {
-    if (ui.helpPop.hidden) openPopover(ui.helpPop, ui.helpBtn);
+  function toggleHelp(anchor = ui.helpBtn) {
+    if (ui.helpPop.hidden) openPopover(ui.helpPop, anchor);
     else ui.helpPop.hidden = true;
   }
 
   document.addEventListener("pointerdown", (event) => {
-    for (const [popover, anchor] of [
-      [ui.methodsPop, ui.methodsBtn],
-      [ui.helpPop, ui.helpBtn],
-    ]) {
-      if (!popover.hidden && !popover.contains(event.target) && !anchor.contains(event.target)) popover.hidden = true;
+    for (const popover of [ui.methodsPop, ui.helpPop]) {
+      if (!popover.hidden && !popover.contains(event.target) && !popover._anchor?.contains(event.target)) {
+        popover.hidden = true;
+      }
     }
   });
 
@@ -1373,14 +1485,13 @@
   function setFirstOnly(value) {
     prefs.firstOnly = value;
     savePrefs();
-    ui.firstBtn.setAttribute("aria-pressed", String(value));
+    ui.firstOnly.checked = value;
     refilter();
   }
 
   function setPaused(paused) {
     state.paused = paused;
     ui.pauseBtn.setAttribute("aria-pressed", String(paused));
-    ui.pauseBtn.querySelector(".label").textContent = paused ? "Paused" : "Live";
     ui.pauseBtn.title = paused ? "Resume capturing (p)" : "Pause capturing (p)";
     ui.pausedNote.hidden = !paused;
     renderEmpty();
@@ -1403,7 +1514,7 @@
     prefs.query = "";
     state.query = parseQuery("");
     prefs.firstOnly = false;
-    ui.firstBtn.setAttribute("aria-pressed", "false");
+    ui.firstOnly.checked = false;
     state.methodFilter = { mode: "exclude", set: new Set() };
     methodFilterChanged();
     renderInspectorBody();
@@ -1413,25 +1524,74 @@
   function applyTheme() {
     document.documentElement.dataset.theme =
       prefs.theme === "system" ? (lightScheme.matches ? "light" : "dark") : prefs.theme;
-    ui.themeBtn.innerHTML = THEME_ICONS[prefs.theme];
-    ui.themeBtn.title = `Theme: ${prefs.theme}. Click to switch`;
+    ui.themeBtn.dataset.mode = prefs.theme;
+    ui.themeBtn.title = `${THEME_NAMES[prefs.theme]}. Click to switch`;
   }
   lightScheme.addEventListener("change", applyTheme);
+
+  function switchTheme() {
+    const before = document.documentElement.dataset.theme;
+    prefs.theme = THEMES[(THEMES.indexOf(prefs.theme) + 1) % THEMES.length];
+    savePrefs();
+    toast(THEME_NAMES[prefs.theme]);
+
+    const theme = prefs.theme === "system" ? (lightScheme.matches ? "light" : "dark") : prefs.theme;
+    const animate =
+      document.startViewTransition && theme !== before && !matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (!animate) {
+      applyTheme();
+      return;
+    }
+
+    // the new colors spread out from the button in a circle
+    const button = ui.themeBtn.getBoundingClientRect();
+    const keyframes = revealKeyframes(button.left + button.width / 2, button.top + button.height / 2);
+    document.startViewTransition(applyTheme).ready.then(() => {
+      // eases the uncovered area, not the radius: quick at first, and it still moves at the end
+      document.documentElement.animate(keyframes, {
+        duration: 320,
+        easing: "ease-out",
+        pseudoElement: "::view-transition-new(root)",
+      });
+    });
+  }
+
+  // A circle that uncovers the same share of the page in every moment. Easing its radius instead
+  // leaves the far corner for last, and the edge crawls over it while the rest is long done
+  function revealKeyframes(x, y) {
+    const columns = 64;
+    const rows = 36;
+    const distances = [];
+    for (let column = 0; column < columns; column++) {
+      for (let row = 0; row < rows; row++) {
+        distances.push(Math.hypot(((column + 0.5) / columns) * innerWidth - x, ((row + 0.5) / rows) * innerHeight - y));
+      }
+    }
+    distances.sort((a, b) => a - b);
+
+    const farthest = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+    const steps = 30;
+    return Array.from({ length: steps + 1 }, (_, step) => {
+      const radius =
+        step === 0 ? 0 : step === steps ? farthest : distances[Math.round((step / steps) * (distances.length - 1))];
+      return { clipPath: `circle(${radius.toFixed(1)}px at ${x}px ${y}px)` };
+    });
+  }
 
   function applyListWidth() {
     if (prefs.listWidth) ui.main.style.setProperty("--list-width", `${prefs.listWidth * 100}%`);
     else ui.main.style.removeProperty("--list-width");
   }
 
-  ui.firstBtn.addEventListener("click", () => setFirstOnly(!prefs.firstOnly));
+  ui.firstOnly.addEventListener("change", () => setFirstOnly(ui.firstOnly.checked));
   ui.pauseBtn.addEventListener("click", () => send({ type: "pause", value: !state.paused }));
-  ui.followBtn.addEventListener("click", () => setFollow(!state.follow));
+  ui.follow.addEventListener("change", () => setFollow(ui.follow.checked));
   ui.clearBtn.addEventListener("click", () => send({ type: "clear" }));
-  ui.helpBtn.addEventListener("click", toggleHelp);
-  ui.themeBtn.addEventListener("click", () => {
-    prefs.theme = THEMES[(THEMES.indexOf(prefs.theme) + 1) % THEMES.length];
-    savePrefs();
-    applyTheme();
+  ui.helpBtn.addEventListener("click", () => toggleHelp(ui.helpBtn));
+  ui.shortcutsBtn.addEventListener("click", () => toggleHelp(ui.shortcutsBtn));
+  ui.themeBtn.addEventListener("click", switchTheme);
+  ui.exportBtn.addEventListener("click", () => {
+    if (state.records.length) toast(`Exporting ${plural(state.records.length, "request")}`);
   });
   ui.receiver.addEventListener("click", () => copy(state.receiver, "the receiver address"));
   ui.newPill.addEventListener("click", () => setFollow(true));
@@ -1442,12 +1602,17 @@
     else if (action === "reset-filters") resetFilters();
   });
 
+  ui.logHead.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-sort]");
+    if (button) setSort(button.dataset.sort);
+  });
+
   ui.rows.addEventListener("click", (event) => {
     const element = event.target.closest(".row");
     if (!element) return;
     const position = Number(element.dataset.position);
     // inspecting an older row stops following, otherwise it would scroll away
-    if (position < state.visible.length - 1) setFollow(false);
+    if (position !== edgePosition()) setFollow(false);
     select(state.visible[position]);
   });
 
@@ -1455,9 +1620,13 @@
     "scroll",
     () => {
       const viewport = ui.viewport;
-      // following means sticking to the bottom: scrolling away stops it, scrolling back starts it again
-      const atBottom = viewport.scrollTop + viewport.clientHeight >= viewport.scrollHeight - 4;
-      if (atBottom !== state.follow) setFollow(atBottom);
+      // following means sticking to where new rows show up: scrolling away stops it, scrolling back starts it again
+      const edge = followEdge();
+      if (edge) {
+        const atEdge =
+          edge === "top" ? viewport.scrollTop <= 4 : viewport.scrollTop + viewport.clientHeight >= viewport.scrollHeight - 4;
+        if (atEdge !== state.follow) setFollow(atEdge);
+      }
       scheduleRender();
     },
     { passive: true },
@@ -1549,13 +1718,19 @@
     k: () => moveSelection(-1),
     PageDown: () => moveSelection(pageSize()),
     PageUp: () => moveSelection(-pageSize()),
-    Home: () => moveTo(0),
+    Home: () => {
+      moveTo(0);
+      if (followEdge() === "top") setFollow(true);
+    },
     End: () => {
       moveTo(Infinity);
-      setFollow(true);
+      if (followEdge() === "bottom") setFollow(true);
     },
     p: () => send({ type: "pause", value: !state.paused }),
-    f: () => setFollow(!state.follow),
+    f: () => {
+      if (followEdge()) setFollow(!state.follow);
+      else toast("Following only works when sorting by time");
+    },
     1: () => setFirstOnly(!prefs.firstOnly),
     m: toggleMethods,
     h: hideInspectedMethod,
@@ -1569,7 +1744,8 @@
       if (closePopovers()) event.preventDefault();
       return;
     }
-    if (event.isComposing || event.target.closest?.("input, textarea, select")) return;
+    // checkboxes keep the focus after a click, shortcuts should keep working then
+    if (event.isComposing || event.target.closest?.("input:not([type=checkbox]), textarea, select")) return;
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
       event.preventDefault();
       focusSearch();
@@ -1614,7 +1790,8 @@
 
   function setConnected(connected) {
     state.connected = connected;
-    ui.conn.className = `conn ${connected ? "connected" : "disconnected"}`;
+    ui.conn.classList.toggle("connected", connected);
+    ui.conn.classList.toggle("disconnected", !connected);
     ui.conn.querySelector(".label").textContent = connected ? "Connected" : "Reconnecting…";
     renderEmpty();
   }
@@ -1625,6 +1802,7 @@
         // the server sends its whole log after this. After a restart, nothing from before is valid anymore
         const restarted = state.session !== null && state.session !== message.session;
         state.restoreKey = restarted ? null : state.selected?.key ?? null;
+        state.restoreFollow = state.follow;
         if (restarted) {
           detailCache.clear();
           clearInspector();
@@ -1632,7 +1810,7 @@
         state.session = message.session;
         state.maxRecords = message.max_records;
         state.receiver = message.receiver;
-        ui.receiver.textContent = `Receiver ${message.receiver}`;
+        ui.receiverUrl.textContent = message.receiver;
         ui.receiver.hidden = false;
         setPaused(message.paused);
         resetRecords();
@@ -1647,6 +1825,7 @@
       case "clear":
         resetRecords();
         clearInspector();
+        toast("Log cleared");
         break;
       case "state":
         setPaused(message.paused);
@@ -1659,9 +1838,11 @@
   ui.search.value = prefs.query;
   ui.searchClear.hidden = !prefs.query;
   ui.search.classList.toggle("invalid", Boolean(state.query.error));
-  ui.firstBtn.setAttribute("aria-pressed", String(prefs.firstOnly));
+  ui.firstOnly.checked = prefs.firstOnly;
   ui.typesToggle.checked = prefs.types;
   setTab(prefs.tab);
+  updateSortUi();
+  setFollow(state.follow);
   applyTheme();
   applyListWidth();
   updateMethodsBadge();
