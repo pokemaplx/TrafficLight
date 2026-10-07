@@ -26,6 +26,14 @@ class Config(BaseSettings):
     web_max_records: PositiveInt = 5000
     # empty: no login
     web_password: SecretStr = SecretStr("")
+    web_subpath: str = ""  # e.g. "/trafficlight"
+
+    @property
+    def subpath(self) -> str:
+        s = self.web_subpath.strip().rstrip("/")
+        if s and not s.startswith("/"):
+            s = "/" + s
+        return s
 
     class Config:
         # every option can also be set as an environment variable, i.e. TRAFFICLIGHT_OUTPUT=web

@@ -116,22 +116,24 @@ class WebServer:
 
     async def start(self) -> None:
         app = web.Application(middlewares=[_guard(self._auth), _login_required(self._auth)])
-        app.add_routes(
-            [
-                web.get("/", self._static),
-                # browsers ask for it on their own, i.e. for bookmarks
-                web.get("/favicon.ico", self._static),
-                web.get("/static/{name}", self._static),
-                web.get("/static/fonts/{name}", self._font),
-                web.get("/ws", self._websocket),
-                web.get("/api/records/{record_id}/{proto_index}", self._proto),
-                web.get("/api/export", self._export),
-                web.get("/api/session", self._session_check),
-                web.get("/login", self._login_page),
-                web.post("/login", self._login),
-                web.post("/logout", self._logout),
-            ]
-        )
+        base = config.subpath
+        routes = [
+            web.get(f"{base}/", self._static),
+            web.get(f"{base}/favicon.ico", self._static),
+            web.get(f"{base}/static/{{name}}", self._static),
+            web.get(f"{base}/static/fonts/{{name}}", self._font),
+            web.get(f"{base}/ws", self._websocket),
+            web.get(f"{base}/api/records/{{record_id}}/{{proto_index}}", self._proto),
+            web.get(f"{base}/api/export", self._export),
+            web.get(f"{base}/api/session", self._session_check),
+            web.get(f"{base}/login", self._login_page),
+            web.post(f"{base}/login", self._login),
+            web.post(f"{base}/logout", self._logout),
+        ]
+        if base:
+            routes.append(web.get(base, self._redirect_slash))
+            routes.append(web.get("/favicon.ico", self._static))
+        app.add_routes(routes)
 
         runner = web.AppRunner(app, access_log=None)
         await runner.setup()
@@ -251,28 +253,42 @@ class WebServer:
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
 
+    @staticmethod
+    async def _redirect_slash(_: web.Request) -> web.Response:
+        raise web.HTTPMovedPermanently(f"{config.subpath}/")
+
+
     async def _login_page(self, request: web.Request) -> web.Response:
+        base = config.subpath
+        index_url = f"{base}/" if base else "/"
         if not self._auth.enabled or self._auth.valid_session(request.cookies.get(COOKIE_NAME)):
-            raise web.HTTPFound("/")
+            raise web.HTTPFound(index_url)
 
         return web.Response(
             body=(STATIC_DIR / "login.html").read_bytes(), content_type="text/html", charset="utf-8", headers=NO_CACHE
         )
 
     async def _login(self, request: web.Request) -> web.Response:
+        base = config.subpath
+        login_url = f"{base}/login" if base else "/login"
+        index_url = f"{base}/" if base else "/"
+
         password = (await request.post()).get("password")
         if self._auth.enabled and not (isinstance(password, str) and await self._auth.check_password(password)):
-            return web.Response(status=303, headers={"Location": "/login?error"})
+            return web.Response(status=303, headers={"Location": f"{login_url}?error"})
 
-        response = web.Response(status=303, headers={"Location": "/"})
+        response = web.Response(status=303, headers={"Location": index_url})
         if self._auth.enabled:
             _set_session_cookie(request, response, self._auth.new_session(), SESSION_SECONDS)
         return response
 
     @staticmethod
     async def _logout(request: web.Request) -> web.Response:
-        response = web.Response(status=303, headers={"Location": "/login"})
+        base = config.subpath
+        login_url = f"{base}/login" if base else "/login"
+        response = web.Response(status=303, headers={"Location": login_url})
         _set_session_cookie(request, response, "", 0)
+        return responsekie(request, response, "", 0)
         return response
 
     @staticmethod
@@ -282,7 +298,13 @@ class WebServer:
 
     @staticmethod
     async def _static(request: web.Request) -> web.Response:
-        name = request.match_info.get("name", request.path.lstrip("/") or "index.html")
+        if "name" in request.match_info:
+            name = request.match_info["name"]
+        elif request.path.endswith("favicon.ico"):
+            name = "favicon.ico"
+        else:
+            name = "index.html"
+
         content_type = STATIC_FILES.get(name)
         if content_type is None:
             raise web.HTTPNotFound()
@@ -343,23 +365,27 @@ def _login_required(auth: Auth) -> Callable[..., Awaitable[web.StreamResponse]]:
     async def middleware(
         request: web.Request, handler: Callable[[web.Request], Awaitable[web.StreamResponse]]
     ) -> web.StreamResponse:
+        base = config.subpath
+        login_path = f"{base}/login" if base else "/login"
+        index_path = f"{base}/" if base else "/"
+
         # the static files are in the public repository anyway, the login page needs them
-        public = request.path in ("/login", "/favicon.ico") or request.path.startswith("/static/")
+        public = request.path in (login_path, f"{base}/favicon.ico", "/favicon.ico") or "/static/" in request.path
         if not auth.enabled or public or auth.valid_session(request.cookies.get(COOKIE_NAME)):
             return await handler(request)
 
-        if request.path == "/":
-            raise web.HTTPFound("/login")
+        if request.path in (index_path, base):
+            raise web.HTTPFound(login_path)
         raise web.HTTPUnauthorized(text="Log in first")
 
     return middleware
 
 
 def _set_session_cookie(request: web.Request, response: web.Response, session: str, max_age: int) -> None:
-    # behind a proxy like Coolify's, the browser talks https to the proxy and the proxy http to us
     https = request.secure or request.headers.get("X-Forwarded-Proto", "").split(",")[0].strip() == "https"
+    cookie_path = config.subpath or "/"
     response.set_cookie(
-        COOKIE_NAME, session, max_age=max_age, path="/", httponly=True, samesite="Lax", secure=https or None
+        COOKIE_NAME, session, max_age=max_age, path=cookie_path, httponly=True, samesite="Lax", secure=https or None
     )
 
 
@@ -392,7 +418,10 @@ def _web_url() -> str:
     host = config.web_host
     if host in WILDCARD_HOSTS:
         host = "::1" if host == "::" else "127.0.0.1"
-    return _url(host, config.web_port)
+    url = _url(host, config.web_port)
+    if config.subpath:
+        url += config.subpath + "/"
+    return url
 
 
 def _receiver_url() -> str:
