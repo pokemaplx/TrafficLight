@@ -349,9 +349,11 @@ export function renderPanes() {
       pane.dataset.tab = String(tab.id);
       pane.innerHTML = '<div class="pane-head"></div><div class="pane-note" hidden></div><div class="pane-body"></div>';
       tab.el = pane;
-      renderPaneHead(tab);
       renderPaneBody(tab);
     }
+    // always, not just for a new pane: a preview tab keeps its element when it is pointed at
+    // another row, and the head would otherwise still describe the row before it
+    renderPaneHead(tab);
     tab.el.classList.toggle("focused", visible.length > 1 && tab.id === focusedTab()?.id);
   }
   ui.panes.replaceChildren(...visible.map((tab) => /** @type {HTMLElement} */ (tab.el)));
