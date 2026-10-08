@@ -5,11 +5,13 @@ from aiohttp import web
 from pydantic import ValidationError
 
 from .config import config
+from .forward import Forwarder
 from .model import RequestModel
 from .output import get_output
 from .proto_utils import Proto
 
 output = get_output(config.output)
+forwarder = Forwarder(config.forward_url, config.forward_token.get_secret_value())
 
 
 class TrafficReceiver:
@@ -20,10 +22,16 @@ class TrafficReceiver:
 
     @staticmethod
     async def __traffic_post(request: web.Request):
+        body = await request.read()
+
         try:
-            data = await request.json()
+            data = json.loads(body)
         except json.JSONDecodeError:
             return web.Response(status=400, text="bad json")
+
+        # the body goes on untouched, so the other end sees exactly what the mitm sent. Whether
+        # Traffic Light itself can make sense of it is none of its business
+        forwarder.send(body)
 
         async def _handle_data(data: dict):
             model = RequestModel(**data)
@@ -54,7 +62,10 @@ server = t.get_app()
 async def main():
     await output.start()
     asyncio.create_task(web._run_app(server, host=config.host, port=config.port, print=lambda _: _))
-    await asyncio.Event().wait()
+    try:
+        await asyncio.Event().wait()
+    finally:
+        await forwarder.close()
 
 
 def run():

@@ -19,7 +19,27 @@
   <link rel="preload" href="static/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="static/fonts/jetbrains-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="static/style.css">
-  <script src="static/app.js" defer></script>
+  <script type="module" src="static/js/main.js"></script>
+  <link rel="modulepreload" href="static/js/badge.js">
+  <link rel="modulepreload" href="static/js/clipboard.js">
+  <link rel="modulepreload" href="static/js/constants.js">
+  <link rel="modulepreload" href="static/js/highlight.js">
+  <link rel="modulepreload" href="static/js/inspector.js">
+  <link rel="modulepreload" href="static/js/list.js">
+  <link rel="modulepreload" href="static/js/methods.js">
+  <link rel="modulepreload" href="static/js/popover.js">
+  <link rel="modulepreload" href="static/js/prefs.js">
+  <link rel="modulepreload" href="static/js/query.js">
+  <link rel="modulepreload" href="static/js/records.js">
+  <link rel="modulepreload" href="static/js/rows.js">
+  <link rel="modulepreload" href="static/js/search.js">
+  <link rel="modulepreload" href="static/js/socket.js">
+  <link rel="modulepreload" href="static/js/sort.js">
+  <link rel="modulepreload" href="static/js/state.js">
+  <link rel="modulepreload" href="static/js/theme.js">
+  <link rel="modulepreload" href="static/js/tree.js">
+  <link rel="modulepreload" href="static/js/ui.js">
+  <link rel="modulepreload" href="static/js/util.js">
 </head>
 <body>
   <header class="toolbar">
@@ -42,6 +62,11 @@
       <svg class="chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>
     </button>
 
+    <button id="saved-chip" class="btn chip" type="button" hidden>
+      <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 3.5h11a1 1 0 0 1 1 1V21l-6.5-4.5L5.5 21V4.5a1 1 0 0 1 1-1Z"/></svg>
+      <span id="saved-count">0</span>&nbsp;saved
+    </button>
+
     <div class="toolbar-group">
       <label class="check" title="Only show the first proto of every request (1)">
         <input type="checkbox" class="cb" id="first-only"><span>First proto only</span>
@@ -57,25 +82,29 @@
       <!-- shows the state, and on hover what clicking does -->
       <span class="rec-icon" aria-hidden="true">
         <span class="rec-dot"></span>
-        <svg class="i rec-pause" viewBox="0 0 24 24"><path d="M9 6v12M15 6v12"/></svg>
+        <svg class="i rec-pause" viewBox="0 0 24 24"><path d="M8 5.5v13M16 5.5v13"/></svg>
         <svg class="i rec-play" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z"/></svg>
       </span>
       <span class="labels"><span class="live">Live</span><span class="paused">Paused</span></span>
     </button>
     <button id="clear-btn" class="btn danger" type="button" title="Empty the log">
-      <svg class="i trash" viewBox="0 0 24 24" aria-hidden="true">
-        <path class="lid" d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/>
-        <path d="M6 7l.9 12.1A2 2 0 0 0 8.9 21h6.2a2 2 0 0 0 2-1.9L18 7M10 11v6M14 11v6"/>
+      <svg class="i eraser" viewBox="0 0 24 24" aria-hidden="true">
+        <g class="block">
+          <path d="m7 21-4.3-4.3a2.4 2.4 0 0 1 0-3.4l9.6-9.6a2.4 2.4 0 0 1 3.4 0l5.6 5.6a2.4 2.4 0 0 1 0 3.4L13 21"/>
+          <path d="m5.3 10.7 9 9"/>
+        </g>
+        <path d="M21.5 21H7"/>
       </svg>
       Clear
     </button>
-    <a id="export-btn" class="btn" href="api/export" title="Download the whole log as JSON">
+    <button id="export-btn" class="btn" type="button" title="Download the log as JSON">
       <svg class="i download" viewBox="0 0 24 24" aria-hidden="true">
         <path class="arrow" d="M12 4v11M7.5 10.5 12 15l4.5-4.5"/>
         <path d="M5 20h14"/>
       </svg>
       Export
-    </a>
+      <svg class="chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>
+    </button>
     <button id="theme-btn" class="btn icon theme" type="button" data-mode="system">
       <svg class="i theme-icon" data-mode="system" viewBox="0 0 24 24" aria-hidden="true">
         <circle cx="12" cy="12" r="8.5"/><path class="fill" d="M12 3.5a8.5 8.5 0 0 1 0 17z"/>
@@ -85,7 +114,12 @@
         <path d="M12 2.5v2M12 19.5v2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M2.5 12h2M19.5 12h2M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/>
       </svg>
       <svg class="i theme-icon" data-mode="dark" viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M20.5 14.2A8.5 8.5 0 1 1 9.8 3.5a6.6 6.6 0 0 0 10.7 10.7z"/>
+        <!-- the sparkles push the drawing right and up, this puts it back in the middle -->
+        <g transform="translate(-0.76 0.31)">
+          <path d="M19.3 14.6A8 8 0 1 1 9.4 4.7a6.3 6.3 0 0 0 9.9 9.9z"/>
+          <path class="spark" d="M17.5 3v3.2M15.9 4.6h3.2"/>
+          <path class="spark small" d="M21 8.4v1.8M20.1 9.3h1.8"/>
+        </g>
       </svg>
     </button>
   </header>
@@ -93,9 +127,14 @@
   <main class="main" id="main">
     <section class="log" aria-label="Requests">
       <div class="log-head" id="log-head">
-        <button class="sort" type="button" data-sort="time" title="Sort by time">
-          Time<svg class="sort-arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13V3M4 7l4-4 4 4"/></svg>
-        </button>
+        <span></span>
+        <span class="th-time">
+          <button class="sort" type="button" data-sort="time" title="Sort by time">
+            <span id="time-label">Time</span><svg class="sort-arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13V3M4 7l4-4 4 4"/></svg>
+          </button>
+          <!-- shows the gap to the request before instead of the clock -->
+          <button class="time-mode" id="time-mode" type="button" aria-label="Switch what the time column shows">&#916;</button>
+        </span>
         <button class="sort" type="button" data-sort="method" title="Sort by method">
           Method<svg class="sort-arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13V3M4 7l4-4 4 4"/></svg>
         </button>
@@ -111,7 +150,10 @@
         <div class="rows" id="rows"></div>
       </div>
       <div class="log-empty" id="log-empty" hidden></div>
-      <button class="new-pill" id="new-pill" type="button" hidden></button>
+      <div class="log-pills" id="log-pills">
+        <button class="pill jump-pill" id="jump-pill" type="button" hidden></button>
+        <button class="pill new-pill" id="new-pill" type="button" hidden></button>
+      </div>
     </section>
 
     <div class="splitter" id="splitter" role="separator" aria-orientation="vertical" title="Drag to resize, double click to reset"></div>
@@ -121,10 +163,12 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M4 10h10M4 15h16M4 20h7"/></svg>
         <div class="title">Select a proto to inspect it</div>
         <div>Use <kbd>↑</kbd> <kbd>↓</kbd> to move through the log, <kbd>?</kbd> shows every shortcut</div>
+        <div class="muted">Ctrl or middle click opens a proto in another tab</div>
       </div>
-      <div class="inspector-head" id="inspector-head" hidden></div>
+      <!-- one tab per open proto, two of them visible at once when split -->
+      <div class="doc-tabs" id="doc-tabs" hidden></div>
       <div class="inspector-tools" id="inspector-tools" hidden>
-        <div class="tabs" id="tabs" role="tablist">
+        <div class="tabs" id="tabs" role="tablist" aria-label="How to show the messages">
           <button type="button" role="tab" data-tab="tree">Tree</button>
           <button type="button" role="tab" data-tab="json">JSON</button>
           <button type="button" role="tab" data-tab="text">Text</button>
@@ -136,11 +180,34 @@
             <input type="checkbox" class="cb" id="types-toggle"><span>Types</span>
           </label>
         </div>
+        <button class="mini" id="find-btn" type="button" title="Find in this proto (Ctrl+F)">
+          <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m20 20-4.9-4.9"/></svg>
+          Find
+        </button>
         <div class="grow"></div>
+        <button class="mini" id="split-btn" type="button" aria-pressed="false" title="Show two protos side by side" hidden>
+          <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="5" width="8.5" height="14" rx="2"/><rect x="13" y="5" width="8.5" height="14" rx="2"/></svg>
+          Split
+        </button>
+        <button class="mini" id="diff-btn" type="button" aria-pressed="false" title="Compare the two open protos" hidden>
+          <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4v10a3 3 0 0 0 3 3h6M6 4 3.5 6.5M6 4l2.5 2.5M18 20V10a3 3 0 0 0-3-3H9m9 13 2.5-2.5M18 20l-2.5-2.5"/></svg>
+          Diff
+        </button>
         <button class="mini" id="copy-json-btn" type="button" title="Copy request and response as JSON (c)">Copy JSON</button>
         <button class="mini" id="copy-text-btn" type="button" title="Copy request and response as protobuf text">Copy text</button>
       </div>
-      <div class="inspector-body" id="inspector-body"></div>
+      <div class="find-bar" id="find-bar" hidden>
+        <svg class="find-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 1a5.5 5.5 0 0 1 4.38 8.82l3.65 3.65-1.06 1.06-3.65-3.65A5.5 5.5 0 1 1 6.5 1Zm0 1.5a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z"/></svg>
+        <input id="find-input" type="text" spellcheck="false" autocomplete="off" placeholder="Find in this proto…" aria-label="Find in this proto">
+        <span class="find-count" id="find-count"></span>
+        <button class="find-toggle" id="find-case" type="button" aria-pressed="false" title="Match case">Aa</button>
+        <button class="find-toggle" id="find-regex" type="button" aria-pressed="false" title="Regular expression">.*</button>
+        <button class="find-toggle" id="find-only" type="button" aria-pressed="false" title="Only show the fields that match">Matches only</button>
+        <button class="find-step" id="find-prev" type="button" title="Previous match (Shift+Enter)">↑</button>
+        <button class="find-step" id="find-next" type="button" title="Next match (Enter)">↓</button>
+        <button class="find-step" id="find-close" type="button" title="Close (Esc)">×</button>
+      </div>
+      <div class="panes" id="panes"></div>
     </section>
   </main>
 
@@ -179,6 +246,23 @@
     <ul class="methods-list" id="methods-list"></ul>
   </div>
 
+  <div class="popover menu-pop" id="export-pop" hidden>
+    <a class="menu-item" id="export-all" href="api/export">Everything<span class="hint" id="export-all-count"></span></a>
+    <button class="menu-item" id="export-filtered" type="button">
+      What the filter shows<span class="hint" id="export-filtered-count"></span>
+    </button>
+    <a class="menu-item" id="export-saved" href="api/export?saved=1">
+      Saved<span class="hint" id="export-saved-count"></span>
+    </a>
+  </div>
+
+  <div class="popover menu-pop" id="clear-pop" hidden>
+    <button class="menu-item" id="clear-keep-saved" type="button">
+      Empty the log<span class="hint" id="clear-keeps"></span>
+    </button>
+    <button class="menu-item danger" id="clear-everything" type="button">Empty it including the saved ones</button>
+  </div>
+
   <div class="popover help-pop" id="help-pop" hidden>
     <h3>Filter</h3>
     <table>
@@ -189,6 +273,7 @@
       <tr><td><code>msg:FortDetails</code></td><td>Request or response message name</td></tr>
       <tr><td><code>status:ERROR</code> <code>s:</code></td><td>Status or result of the response</td></tr>
       <tr><td><code>/pika(chu)?/</code></td><td>Regular expression</td></tr>
+      <tr><td><code>is:saved</code></td><td>Also <code>is:proxy</code>, <code>is:error</code>, <code>is:ok</code>, <code>is:empty</code>, <code>is:unknown</code></td></tr>
     </table>
     <p class="muted">Every term has to match. Keys work with <code>-</code> and quotes too, i.e. <code>-m:GET_MAP_OBJECTS</code></p>
     <h3>Shortcuts</h3>
@@ -198,8 +283,19 @@
       <tr><td><kbd>Home</kbd> <kbd>End</kbd></td><td>First / last</td><td><kbd>1</kbd></td><td>First proto only</td></tr>
       <tr><td><kbd>m</kbd></td><td>Methods</td><td><kbd>h</kbd></td><td>Hide inspected method</td></tr>
       <tr><td><kbd>t</kbd></td><td>Tree / JSON / Text</td><td><kbd>c</kbd></td><td>Copy inspected as JSON</td></tr>
+      <tr><td><kbd>g</kbd></td><td>Back to the selected proto</td><td><kbd>b</kbd></td><td>Save or unsave</td></tr>
       <tr><td><kbd>Esc</kbd></td><td>Close or clear</td><td><kbd>?</kbd></td><td>This help</td></tr>
     </table>
+    <h3>Several protos at once</h3>
+    <table class="keys">
+      <tr><td><kbd>Enter</kbd></td><td>Open in a tab that stays</td><td><kbd>w</kbd></td><td>Close the tab</td></tr>
+      <tr><td><kbd>[</kbd> <kbd>]</kbd></td><td>Previous / next tab</td><td><kbd>Ctrl</kbd><kbd>F</kbd></td><td>Find in this proto</td></tr>
+      <tr><td><kbd>n</kbd></td><td>Next match</td><td><kbd>Esc</kbd></td><td>Close the find bar</td></tr>
+    </table>
+    <p class="muted">
+      <kbd>Ctrl</kbd> or middle click on a row opens it in a background tab, a double click opens one that stays.
+      <b>Split</b> shows two of them side by side and <b>Diff</b> compares the pair.
+    </p>
   </div>
 
   <div class="toast" id="toast" role="status" hidden></div>

@@ -1,0 +1,92 @@
+// @ts-check
+
+// every id below exists in index.html, so carrying the null case through the whole app buys nothing
+const $ = (id) => /** @type {HTMLElement} */ (document.getElementById(id));
+const $input = (id) => /** @type {HTMLInputElement} */ (document.getElementById(id));
+export const ui = {
+  search: $input("search"),
+  searchClear: $("search-clear"),
+  suggestions: $("suggestions"),
+  helpBtn: $("help-btn"),
+  methodsBtn: $("methods-btn"),
+  methodsBadge: $("methods-badge"),
+  savedChip: $("saved-chip"),
+  savedCount: $("saved-count"),
+  firstOnly: $input("first-only"),
+  pauseBtn: $("pause-btn"),
+  follow: $input("follow"),
+  clearBtn: $("clear-btn"),
+  clearPop: $("clear-pop"),
+  clearKeepSaved: $("clear-keep-saved"),
+  clearKeeps: $("clear-keeps"),
+  clearEverything: $("clear-everything"),
+  themeBtn: $("theme-btn"),
+  exportBtn: $("export-btn"),
+  exportPop: $("export-pop"),
+  exportAll: $("export-all"),
+  exportAllCount: $("export-all-count"),
+  exportFiltered: $("export-filtered"),
+  exportFilteredCount: $("export-filtered-count"),
+  exportSaved: $("export-saved"),
+  exportSavedCount: $("export-saved-count"),
+  main: $("main"),
+  viewport: $("viewport"),
+  sizer: $("sizer"),
+  rows: $("rows"),
+  logHead: $("log-head"),
+  timeMode: $("time-mode"),
+  timeLabel: $("time-label"),
+  logEmpty: $("log-empty"),
+  logPills: $("log-pills"),
+  newPill: $("new-pill"),
+  jumpPill: $("jump-pill"),
+  splitter: $("splitter"),
+  inspectorEmpty: $("inspector-empty"),
+  inspectorTools: $("inspector-tools"),
+  docTabs: $("doc-tabs"),
+  panes: $("panes"),
+  splitBtn: $("split-btn"),
+  diffBtn: $("diff-btn"),
+  findBtn: $("find-btn"),
+  findBar: $("find-bar"),
+  findInput: $input("find-input"),
+  findCount: $("find-count"),
+  findCase: $("find-case"),
+  findRegex: $("find-regex"),
+  findOnly: $("find-only"),
+  findPrev: $("find-prev"),
+  findNext: $("find-next"),
+  findClose: $("find-close"),
+  tabs: $("tabs"),
+  treeTools: $("tree-tools"),
+  expandBtn: $("expand-btn"),
+  collapseBtn: $("collapse-btn"),
+  typesToggle: $input("types-toggle"),
+  copyJsonBtn: $("copy-json-btn"),
+  copyTextBtn: $("copy-text-btn"),
+  conn: $("conn"),
+  receiver: $("receiver"),
+  receiverUrl: $("receiver-url"),
+  shortcutsBtn: $("shortcuts-btn"),
+  logoutBtn: $("logout-btn"),
+  pausedNote: $("paused-note"),
+  stats: $("stats"),
+  methodsPop: $("methods-pop"),
+  methodsSearch: $input("methods-search"),
+  methodsAll: $("methods-all"),
+  methodsNone: $("methods-none"),
+  methodsSummary: $("methods-summary"),
+  methodsList: $("methods-list"),
+  helpPop: $("help-pop"),
+  toast: $("toast"),
+};
+
+let toastTimer;
+export function toast(message) {
+  ui.toast.textContent = message;
+  ui.toast.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    ui.toast.hidden = true;
+  }, 1800);
+}
