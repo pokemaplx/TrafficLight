@@ -31,3 +31,6 @@ web_max_records = 5000
 web_password = ""
 # Makes the web ui ask for this password. Leave it empty to not ask for one.
 # Without a password, the web ui only opens through localhost or an IP address, not a domain
+
+# Run the web UI behind a reverse proxy subpath (e.g. "/trafficlight")
+# web_subpath = ""
