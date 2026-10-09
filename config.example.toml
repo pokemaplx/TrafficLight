@@ -4,6 +4,14 @@ host = "0.0.0.0"
 port = 3335
 # Host and Port for the Receiver
 
+forward_url = ""
+forward_token = ""
+# Pass every request on to another endpoint as well, i.e. a Golbat's http://127.0.0.1:9001/raw, so Traffic Light
+# can sit in front of your scanner instead of taking its place. Leave empty to not forward anything.
+# forward_token is sent as a bearer token if you set one.
+# Forwarding is fire and forget: nothing is retried, and an endpoint that is down or slow never slows
+# down the receiver or your mitm
+
 output = "ui/web/print/discord"
 # ui      = cool interactive ui
 # web     = cool interactive ui in your browser

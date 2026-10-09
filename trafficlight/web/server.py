@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import ipaddress
 import json
+import re
 import secrets
 import socket
 import time
@@ -26,7 +27,6 @@ STATIC_DIR = Path(__file__).parent / "static"
 # content types are set explicitly because Windows' registry sometimes maps .js to text/plain
 STATIC_FILES = {
     "index.html": "text/html",
-    "app.js": "text/javascript",
     "style.css": "text/css",
     "logo.png": "image/png",
     "favicon.ico": "image/x-icon",
@@ -38,11 +38,16 @@ FONT_FILES = {
     "jetbrains-mono-latin.woff2",
     "jetbrains-mono-latin-ext.woff2",
 }
+# the app is a handful of ES modules, served by name instead of being listed one by one
+SCRIPT_NAME = re.compile(r"[a-z]+\.js")
 NO_CACHE = {"Cache-Control": "no-cache"}
 WILDCARD_HOSTS = ("", "0.0.0.0", "::")
 
 HISTORY_CHUNK_SIZE = 500
 MAX_CLIENT_BACKLOG = 1000
+# saved records are never dropped, so they need a cap of their own. Never more than half of a
+# small log either, or saving would push everything else out of it
+SAVE_LIMIT = 200
 
 
 class Record:
@@ -109,6 +114,8 @@ class WebServer:
         self._next_id: int = 1
         self._clients: set[Client] = set()
         self._paused: bool = False
+        # record ids the user asked to keep: safe from the cap and from clearing
+        self._saved: set[int] = set()
         self._serving: asyncio.Task | None = None
         self._auth: Auth = Auth(config.web_password.get_secret_value())
         # lets browsers tell a reconnect from a restart
@@ -119,12 +126,15 @@ class WebServer:
         base = config.subpath
         routes = [
             web.get(f"{base}/", self._static),
+            # browsers ask for it on their own, i.e. for bookmarks
             web.get(f"{base}/favicon.ico", self._static),
             web.get(f"{base}/static/{{name}}", self._static),
+            web.get(f"{base}/static/js/{{name}}", self._script),
             web.get(f"{base}/static/fonts/{{name}}", self._font),
             web.get(f"{base}/ws", self._websocket),
             web.get(f"{base}/api/records/{{record_id}}/{{proto_index}}", self._proto),
             web.get(f"{base}/api/export", self._export),
+            web.post(f"{base}/api/export", self._export_ids),
             web.get(f"{base}/api/session", self._session_check),
             web.get(f"{base}/login", self._login_page),
             web.post(f"{base}/login", self._login),
@@ -169,10 +179,47 @@ class WebServer:
         self._next_id += 1
 
         self._records[record.id] = record
-        while len(self._records) > config.web_max_records:
-            self._records.popitem(last=False)
+        dropped = self._evict()
 
-        self._broadcast(_records_message([record.summary]))
+        self._broadcast(_records_message([record.summary], dropped=dropped))
+
+    def _evict(self) -> list[int]:
+        """Drops the oldest records that aren't saved. Returns what went, so browsers can agree"""
+        over = len(self._records) - config.web_max_records
+        if over <= 0:
+            return []
+        if not self._saved:
+            return [self._records.popitem(last=False)[0] for _ in range(over)]
+
+        dropped = []
+        # an OrderedDict iterates oldest first
+        for record_id in self._records:
+            if len(dropped) >= over:
+                break
+            if record_id not in self._saved:
+                dropped.append(record_id)
+        for record_id in dropped:
+            del self._records[record_id]
+        return dropped
+
+    def _save_limit(self) -> int:
+        return min(SAVE_LIMIT, max(1, config.web_max_records // 2))
+
+    def _set_saved(self, client: Client, record_id: Any, saved: bool) -> None:
+        if not isinstance(record_id, int) or record_id not in self._records:
+            return
+
+        if saved and record_id not in self._saved:
+            limit = self._save_limit()
+            if len(self._saved) >= limit:
+                client.send(json.dumps({"type": "notice", "text": f"You can save at most {limit} requests"}))
+                return
+            self._saved.add(record_id)
+        elif not saved:
+            # no eviction needed: _save_limit keeps them below the cap, so the log is never over it
+            self._saved.discard(record_id)
+
+        self._broadcast(json.dumps({"type": "save", "id": record_id, "value": record_id in self._saved}))
 
     def _broadcast(self, message: str) -> None:
         for client in tuple(self._clients):
@@ -183,7 +230,7 @@ class WebServer:
             else:
                 client.send(message)
 
-    def _handle_command(self, data: str) -> None:
+    def _handle_command(self, client: Client, data: str) -> None:
         try:
             command = json.loads(data)
         except json.JSONDecodeError:
@@ -194,9 +241,22 @@ class WebServer:
         if command.get("type") == "pause":
             self._paused = bool(command.get("value"))
             self._broadcast(json.dumps({"type": "state", "paused": self._paused}))
+        elif command.get("type") == "save":
+            self._set_saved(client, command.get("id"), bool(command.get("value")))
         elif command.get("type") == "clear":
-            self._records.clear()
-            self._broadcast(json.dumps({"type": "clear"}))
+            # saved records are the ones you said to keep, so clearing leaves them alone
+            if command.get("saved"):
+                self._records.clear()
+            else:
+                self._records = OrderedDict(
+                    (record_id, record) for record_id, record in self._records.items() if record_id in self._saved
+                )
+            self._saved &= self._records.keys()
+            # one message carrying the survivors, so they never blink out of the browser and back
+            self._broadcast(
+                _records_message([record.summary for record in self._records.values()], message_type="clear")
+            )
+            self._broadcast(json.dumps({"type": "saved", "ids": sorted(self._saved)}))
 
     def _hello(self) -> str:
         return json.dumps(
@@ -207,6 +267,7 @@ class WebServer:
                 "max_records": config.web_max_records,
                 "receiver": _receiver_url(),
                 "auth": self._auth.enabled,
+                "saved": sorted(self._saved),
             }
         )
 
@@ -230,7 +291,7 @@ class WebServer:
         try:
             async for message in ws:
                 if message.type == WSMsgType.TEXT:
-                    self._handle_command(message.data)
+                    self._handle_command(client, message.data)
         finally:
             self._clients.discard(client)
             writer.cancel()
@@ -246,12 +307,24 @@ class WebServer:
 
         return web.json_response(proto_detail(proto))
 
-    async def _export(self, _: web.Request) -> web.Response:
-        filename = datetime.now().strftime("trafficlight-%Y-%m-%d-%H%M%S.json")
-        return web.json_response(
-            [record.export() for record in self._records.values()],
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-        )
+    async def _export(self, request: web.Request) -> web.Response:
+        records = list(self._records.values())
+        if request.query.get("saved"):
+            records = [record for record in records if record.id in self._saved]
+        return _export_response(records)
+
+    async def _export_ids(self, request: web.Request) -> web.Response:
+        """Exports a chosen set of records, i.e. the ones a filter leaves. Too many ids for a URL"""
+        try:
+            wanted = (await request.json()).get("ids")
+        except (json.JSONDecodeError, ValueError):
+            raise web.HTTPBadRequest(text="bad json")
+        if not isinstance(wanted, list):
+            raise web.HTTPBadRequest(text="expected a list of record ids")
+
+        # walking the log instead of the ids: a repeated id can't make the export any bigger
+        chosen = set(wanted)
+        return _export_response([record for record in self._records.values() if record.id in chosen])
 
     @staticmethod
     async def _redirect_slash(_: web.Request) -> web.Response:
@@ -317,6 +390,21 @@ class WebServer:
         )
 
     @staticmethod
+    async def _script(request: web.Request) -> web.Response:
+        name = request.match_info["name"]
+        path = STATIC_DIR / "js" / name
+        # the pattern has no dot or slash in it, so it can't walk out of the directory
+        if not SCRIPT_NAME.fullmatch(name) or not path.is_file():
+            raise web.HTTPNotFound()
+
+        return web.Response(
+            body=path.read_bytes(),
+            content_type="text/javascript",
+            charset="utf-8",
+            headers=NO_CACHE,
+        )
+
+    @staticmethod
     async def _font(request: web.Request) -> web.Response:
         name = request.match_info["name"]
         if name not in FONT_FILES:
@@ -330,9 +418,18 @@ class WebServer:
         )
 
 
-def _records_message(summaries: list[str], message_type: str = "records") -> str:
+def _records_message(summaries: list[str], message_type: str = "records", dropped: list[int] | None = None) -> str:
     # summaries are json already
-    return '{"type": "' + message_type + '", "records": [' + ", ".join(summaries) + "]}"
+    gone = ', "dropped": ' + json.dumps(dropped) if dropped else ""
+    return '{"type": "' + message_type + '", "records": [' + ", ".join(summaries) + "]" + gone + "}"
+
+
+def _export_response(records: list[Record]) -> web.Response:
+    filename = datetime.now().strftime("trafficlight-%Y-%m-%d-%H%M%S.json")
+    return web.json_response(
+        [record.export() for record in records],
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 def _guard(auth: Auth) -> Callable[..., Awaitable[web.StreamResponse]]:

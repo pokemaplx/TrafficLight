@@ -18,6 +18,9 @@ class Output(Enum):
 class Config(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 3335
+    # every request the receiver gets is passed on to this url too, i.e. a Golbat's /raw. Empty: don't forward
+    forward_url: str = ""
+    forward_token: SecretStr = SecretStr("")
     output: Output = Output.UI
     webhook: str = ""
     web_host: str = "127.0.0.1"
