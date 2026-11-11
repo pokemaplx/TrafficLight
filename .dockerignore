@@ -3,7 +3,7 @@
 .idea*
 .venv
 .vscode
-readme_assets
+docs
 **/testdata
 **/*_test.go
 # can contain your password

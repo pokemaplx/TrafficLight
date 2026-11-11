@@ -6,15 +6,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/pokemaplx/TrafficLight/internal/pogo"
+	"github.com/pokemaplx/TrafficLight/internal/traffic"
 )
 
-func post(body string) (*httptest.ResponseRecorder, []pogo.Request, []string) {
-	var requests []pogo.Request
+func post(body string) (*httptest.ResponseRecorder, []traffic.Request, []string) {
+	var requests []traffic.Request
 	var forwarded []string
 	receiver := &Receiver{
 		Forward: func(body []byte) { forwarded = append(forwarded, string(body)) },
-		Sink:    func(request pogo.Request) { requests = append(requests, request) },
+		Sink:    func(request traffic.Request) { requests = append(requests, request) },
 	}
 	recorder := httptest.NewRecorder()
 	receiver.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body)))
@@ -102,7 +102,7 @@ func TestProtosShareOneAllocation(t *testing.T) {
 }
 
 func TestOnlyPostsToTheRootAreTaken(t *testing.T) {
-	receiver := &Receiver{Sink: func(pogo.Request) {}}
+	receiver := &Receiver{Sink: func(traffic.Request) {}}
 	recorder := httptest.NewRecorder()
 	receiver.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/", nil))
 	if recorder.Code != http.StatusMethodNotAllowed {

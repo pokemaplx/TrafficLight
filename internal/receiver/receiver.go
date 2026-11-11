@@ -19,7 +19,7 @@ import (
 	"sync"
 	"unsafe"
 
-	"github.com/pokemaplx/TrafficLight/internal/pogo"
+	"github.com/pokemaplx/TrafficLight/internal/traffic"
 )
 
 // MaxBody is the biggest request the receiver reads
@@ -30,7 +30,7 @@ type Receiver struct {
 	// Whether Traffic Light itself can make sense of it is none of its business
 	Forward func(body []byte)
 	// Sink gets every rpc. The protos' bytes are its to keep
-	Sink func(request pogo.Request)
+	Sink func(request traffic.Request)
 
 	bodies sync.Pool
 }
@@ -154,7 +154,7 @@ func (i *integer) UnmarshalJSON(data []byte) error {
 }
 
 // Parse reads a body: one rpc, or a list of them
-func Parse(body []byte) ([]pogo.Request, error) {
+func Parse(body []byte) ([]traffic.Request, error) {
 	var envelopes []envelope
 	if trimmed := bytes.TrimLeft(body, " \t\r\n"); len(trimmed) > 0 && trimmed[0] == '[' {
 		if err := json.Unmarshal(body, &envelopes); err != nil {
@@ -167,7 +167,7 @@ func Parse(body []byte) ([]pogo.Request, error) {
 		}
 	}
 
-	requests := make([]pogo.Request, len(envelopes))
+	requests := make([]traffic.Request, len(envelopes))
 	for i := range envelopes {
 		if err := envelopes[i].request(&requests[i]); err != nil {
 			return nil, err
@@ -176,7 +176,7 @@ func Parse(body []byte) ([]pogo.Request, error) {
 	return requests, nil
 }
 
-func (e *envelope) request(out *pogo.Request) error {
+func (e *envelope) request(out *traffic.Request) error {
 	entries := e.Contents
 	if entries == nil {
 		entries = e.Protos
@@ -208,7 +208,7 @@ func (e *envelope) request(out *pogo.Request) error {
 	}
 	blob := make([]byte, 0, size)
 
-	out.Protos = make([]pogo.RawProto, len(*entries))
+	out.Protos = make([]traffic.RawProto, len(*entries))
 	for i := range *entries {
 		entry := &(*entries)[i]
 		method := entry.Type

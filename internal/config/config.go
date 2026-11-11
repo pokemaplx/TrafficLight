@@ -10,7 +10,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 
-	"github.com/pokemaplx/TrafficLight/internal/pogo"
+	"github.com/pokemaplx/TrafficLight/internal/protos"
 )
 
 const envPrefix = "TRAFFICLIGHT_"
@@ -67,7 +67,7 @@ func defaults() *Config {
 		WebMaxRecords:  5000,
 		WebMaxMemoryMB: 128,
 
-		ProtosURL:         pogo.UpstreamProtos,
+		ProtosURL:         protos.UpstreamProtos,
 		ProtosUpdateHours: 6,
 	}
 }

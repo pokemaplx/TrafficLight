@@ -4,7 +4,7 @@
 //	go run ./cmd/protoupdate path/to/pogo_pb2.py   or a file, or another url
 //
 // It takes what protoc writes for Python (pogo_pb2.py), or a descriptor set compiled with
-// `protoc --descriptor_set_out`, and writes internal/pogo/pogo.desc. Nothing is generated from
+// `protoc --descriptor_set_out`, and writes internal/protos/pogo.desc. Nothing is generated from
 // it: Traffic Light reads the descriptors at startup.
 //
 // A running Traffic Light looks for new protos by itself (see protos_url), so this is only
@@ -20,13 +20,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/pokemaplx/TrafficLight/internal/pogo"
+	"github.com/pokemaplx/TrafficLight/internal/protos"
 )
 
-const output = "internal/pogo/pogo.desc"
+const output = "internal/protos/pogo.desc"
 
 func main() {
-	from := pogo.UpstreamProtos
+	from := protos.UpstreamProtos
 	switch len(os.Args) {
 	case 1:
 	case 2:
@@ -46,17 +46,17 @@ func run(from string) error {
 	if err != nil {
 		return err
 	}
-	descriptor, err := pogo.DescriptorFrom(source)
+	descriptor, err := protos.DescriptorFrom(source)
 	if err != nil {
 		return err
 	}
 
 	// the same checks Traffic Light does at startup, so a broken file never gets written
-	registry, err := pogo.Load(descriptor)
+	registry, err := protos.Load(descriptor)
 	if err != nil {
 		return fmt.Errorf("%s doesn't hold usable protos: %w", from, err)
 	}
-	before, err := pogo.Load(pogo.Embedded())
+	before, err := protos.Load(protos.Embedded())
 	if err != nil {
 		return err
 	}

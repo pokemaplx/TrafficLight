@@ -22,13 +22,13 @@ import (
 	// that has no time zone database
 	_ "time/tzdata"
 
+	"github.com/pokemaplx/TrafficLight/internal/archive/mariadb"
 	"github.com/pokemaplx/TrafficLight/internal/config"
 	"github.com/pokemaplx/TrafficLight/internal/forward"
-	"github.com/pokemaplx/TrafficLight/internal/mariadb"
-	"github.com/pokemaplx/TrafficLight/internal/pogo"
-	"github.com/pokemaplx/TrafficLight/internal/printout"
+	"github.com/pokemaplx/TrafficLight/internal/output/printer"
+	"github.com/pokemaplx/TrafficLight/internal/output/web"
+	"github.com/pokemaplx/TrafficLight/internal/protos"
 	"github.com/pokemaplx/TrafficLight/internal/receiver"
-	"github.com/pokemaplx/TrafficLight/internal/web"
 )
 
 func main() {
@@ -59,7 +59,7 @@ func run() error {
 	}
 	// loads the protos now instead of on the first request. Reading them leaves a lot behind
 	// that is never needed again, which goes back to the system right away
-	pogo.Default()
+	protos.Default()
 	debug.FreeOSMemory()
 
 	forwarder := forward.New(cfg.ForwardURL, cfg.ForwardToken)
@@ -93,7 +93,7 @@ func run() error {
 
 	switch cfg.Output {
 	case "print":
-		traffic.Sink = printout.New(os.Stdout).Add
+		traffic.Sink = printer.New(os.Stdout).Add
 		if err := listen("receiver", cfg.Host, cfg.Port, traffic); err != nil {
 			return err
 		}
@@ -154,7 +154,7 @@ func run() error {
 	if cfg.ProtosURL != "" || cfg.MethodsURL != "" {
 		// in the background: Traffic Light takes traffic right away, with the protos it was
 		// built with, and switches to newer ones as soon as it has them
-		updater := &pogo.Updater{
+		updater := &protos.Updater{
 			Protos:  cfg.ProtosURL,
 			Methods: cfg.MethodsURL,
 			Logf:    func(format string, args ...any) { fmt.Printf(format+"\n", args...) },

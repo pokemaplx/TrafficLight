@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/pokemaplx/TrafficLight/internal/pogo"
+	"github.com/pokemaplx/TrafficLight/internal/traffic"
 )
 
 // body is what a mitm posts for one big response, about 190 KB of json
@@ -35,7 +35,7 @@ func BenchmarkParse(b *testing.B) {
 // What taking a request costs, from the http handler on
 func BenchmarkReceive(b *testing.B) {
 	data := body()
-	receiver := &Receiver{Sink: func(pogo.Request) {}}
+	receiver := &Receiver{Sink: func(traffic.Request) {}}
 	b.SetBytes(int64(len(data)))
 	b.ReportAllocs()
 	for b.Loop() {
