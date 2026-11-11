@@ -87,6 +87,16 @@ survives **Clear**, and it stays inspectable for as long as Traffic Light runs. 
 bookmark on the left of a row. At most half of either limit can be saved, so there is always room
 for new traffic.
 
+Saved requests are gone when Traffic Light restarts, unless you give it a database. Set
+`database_url` to a MariaDB or MySQL database, i.e.
+`mariadb://user:password@127.0.0.1:3306/trafficlight`, and every request you save is written there
+and put back into the log at the next start. Unsaving one, or clearing the saved ones, deletes it
+there too. Only what you save goes to the database: the log itself stays in memory, and saved
+requests still count towards its limits.
+
+Traffic Light creates its one table, `trafficlight_saved`, by itself. If the database is not up
+yet it waits half a minute for it, and if it goes away later, saving says so instead of pretending.
+
 ### Several Protos at once
 
 Every Proto you open gets a tab. `Ctrl` or middle click opens one in a background tab, a double
@@ -198,6 +208,7 @@ variable, i.e. `TRAFFICLIGHT_OUTPUT=web`, and those win over the file.
 | `web_max_records` | `5000` | how many requests the web UI keeps |
 | `web_max_memory_mb` | `128` | how much the kept requests may weigh, see [Memory](#memory). `0` for no limit |
 | `web_open_browser` | `true` | open a browser when Traffic Light starts |
+| `database_url` | empty | keep saved requests in this MariaDB or MySQL database, see [Keeping requests](#keeping-requests) |
 | `debug_addr` | empty | serve Go's profiler there, i.e. `127.0.0.1:6060` |
 
 ## Installation
@@ -246,6 +257,8 @@ is the binary and nothing else.
 - **Ports Mappings:** `3335:3335`, so your MITM can reach the receiver at `http://{server IP}:3335`
 - **Environment variables:** `TRAFFICLIGHT_WEB_PASSWORD`, since your domain is public, and
   `TRAFFICLIGHT_WEB_MAX_MEMORY_MB` if the default of 128 is more than you want to give it
+- **Optional:** add a MariaDB from Coolify's databases and set `TRAFFICLIGHT_DATABASE_URL` to its
+  internal URL, so the requests you save survive a redeploy
 
 ## Writing a MITM
 
@@ -281,6 +294,12 @@ taken as well, which is what scanners like Golbat expect. A body can also be a l
 go test ./...                                    # everything the server does
 go test -bench . ./internal/web ./internal/receiver
 npx tsc -p internal/web/static/jsconfig.json     # type checks the browser side
+```
+
+The database is only tested against a real one if you name it:
+
+```sh
+TRAFFICLIGHT_TEST_DATABASE_URL=mariadb://root:test@127.0.0.1/trafficlight go test ./internal/mariadb
 ```
 
 The browser side is plain ES modules in `internal/web/static/js` with no build step. They are built

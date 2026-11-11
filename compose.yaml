@@ -12,6 +12,22 @@ services:
     #   TRAFFICLIGHT_WEB_MAX_MEMORY_MB: 64
     #   TRAFFICLIGHT_FORWARD_URL: http://golbat:9001/raw
     #   TZ: Europe/Lisbon
+    #   # keeps saved requests past a restart, see the mariadb service below
+    #   TRAFFICLIGHT_DATABASE_URL: mariadb://trafficlight:change-me@mariadb/trafficlight
     # or use your config.toml
     # volumes:
     #   - ./config.toml:/app/config.toml:ro
+
+  # optional: a database for the requests you save. Traffic Light waits for it to come up
+  # mariadb:
+  #   image: mariadb:11
+  #   environment:
+  #     MARIADB_DATABASE: trafficlight
+  #     MARIADB_USER: trafficlight
+  #     MARIADB_PASSWORD: change-me
+  #     MARIADB_RANDOM_ROOT_PASSWORD: "1"
+  #   volumes:
+  #     - saved:/var/lib/mysql
+
+# volumes:
+#   saved:

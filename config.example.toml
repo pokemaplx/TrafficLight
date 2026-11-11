@@ -30,5 +30,11 @@ web_password = ""
 # Makes the web ui ask for this password. Leave it empty to not ask for one.
 # Without a password, the web ui only opens through localhost or an IP address, not a domain
 
+database_url = ""
+# Keeps the requests you save in a MariaDB or MySQL database, so they are still there after a restart,
+# i.e. "mariadb://user:password@127.0.0.1:3306/trafficlight". Special characters in the password have
+# to be percent-encoded. Only saved requests go there: the log itself stays in memory.
+# Leave it empty and saved requests live as long as Traffic Light runs
+
 debug_addr = ""
 # Serves Go's profiler there, i.e. "127.0.0.1:6060", to see where memory and time go. Leave it empty otherwise

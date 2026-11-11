@@ -18,9 +18,11 @@ type Record struct {
 	RPCHandle *int64
 	Protos    []pogo.RawProto
 
-	// what the record weighs in memory. Guarded by the server's lock, like saved
+	// what the record weighs in memory. Guarded by the server's lock, like saved and key
 	size  int64
 	saved bool
+	// what the archive knows a saved record by, 0 if it doesn't have it
+	key int64
 }
 
 // rough cost of a record and of each of its protos on top of their bytes
@@ -103,6 +105,18 @@ func (s *store) add(record *Record) (dropped []uint64) {
 	}
 	s.compact()
 	return dropped
+}
+
+// restore appends a record that was saved before Traffic Light started. Nothing is dropped
+// for it: what was saved is kept, even if the limits were lowered since
+func (s *store) restore(record *Record) {
+	record.ID = s.nextID
+	s.nextID++
+	record.saved = true
+	s.records = append(s.records, record)
+	s.bytes += record.size
+	s.saved++
+	s.savedBytes += record.size
 }
 
 func (s *store) oldestUnsaved(before int) int {
@@ -197,6 +211,17 @@ func (s *store) setSaved(id uint64, saved bool) saveResult {
 	s.saved++
 	s.savedBytes += record.size
 	return saveDone
+}
+
+// savedKeys are the saved records the archive has
+func (s *store) savedKeys() []int64 {
+	keys := make([]int64, 0, s.saved)
+	for _, record := range s.records[s.head:] {
+		if record.saved && record.key != 0 {
+			keys = append(keys, record.key)
+		}
+	}
+	return keys
 }
 
 func (s *store) savedIDs() []uint64 {

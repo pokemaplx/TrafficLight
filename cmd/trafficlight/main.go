@@ -23,6 +23,7 @@ import (
 
 	"github.com/pokemaplx/TrafficLight/internal/config"
 	"github.com/pokemaplx/TrafficLight/internal/forward"
+	"github.com/pokemaplx/TrafficLight/internal/mariadb"
 	"github.com/pokemaplx/TrafficLight/internal/pogo"
 	"github.com/pokemaplx/TrafficLight/internal/printout"
 	"github.com/pokemaplx/TrafficLight/internal/receiver"
@@ -100,13 +101,27 @@ func run() error {
 	case "web":
 		limit := int64(cfg.WebMaxMemoryMB) << 20
 		limitMemory(limit)
-		ui := web.New(web.Options{
+		options := web.Options{
 			Host:        cfg.WebHost,
 			Password:    cfg.WebPassword,
 			MaxRecords:  cfg.WebMaxRecords,
 			MaxBytes:    limit,
 			ReceiverURL: web.ReceiverURL(cfg.Host, cfg.Port),
-		})
+		}
+		if cfg.DatabaseURL != "" {
+			archive, err := mariadb.Open(cfg.DatabaseURL)
+			if err != nil {
+				return fmt.Errorf("Couldn't use the database for saved requests: %w", err)
+			}
+			defer archive.Close()
+			options.Archive = archive
+		}
+
+		ui := web.New(options)
+		restored, err := ui.Restore()
+		if err != nil {
+			return fmt.Errorf("Couldn't read the saved requests from the database: %w", err)
+		}
 		traffic.Sink = ui.Add
 
 		if err := listen("web UI", cfg.WebHost, cfg.WebPort, ui); err != nil {
@@ -121,6 +136,9 @@ func run() error {
 		fmt.Printf("Send your traffic to %s\n", web.ReceiverURL(cfg.Host, cfg.Port))
 		if ui.AuthEnabled() {
 			fmt.Println("The web UI asks for your password")
+		}
+		if cfg.DatabaseURL != "" {
+			fmt.Printf("Saved requests are kept in the database, %d were there already\n", restored)
 		}
 		if cfg.WebMaxMemoryMB > 0 {
 			fmt.Printf("The log keeps up to %d requests in at most %d MB\n", cfg.WebMaxRecords, cfg.WebMaxMemoryMB)

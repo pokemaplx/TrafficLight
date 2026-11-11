@@ -52,6 +52,17 @@ webhook = "an option that is gone"
 	}
 }
 
+func TestTheDatabaseIsOptional(t *testing.T) {
+	config, err := Load(write(t, ``))
+	if err != nil || config.DatabaseURL != "" {
+		t.Errorf("without the option it is %q, %v", config.DatabaseURL, err)
+	}
+	config, err = Load(write(t, `database_url = " mariadb://user:secret@db/trafficlight "`))
+	if err != nil || config.DatabaseURL != "mariadb://user:secret@db/trafficlight" {
+		t.Errorf("with it, it is %q, %v", config.DatabaseURL, err)
+	}
+}
+
 func TestNumbersInQuotesAreTaken(t *testing.T) {
 	config, err := Load(write(t, `web_port = "8080"`))
 	if err != nil || config.WebPort != 8080 {

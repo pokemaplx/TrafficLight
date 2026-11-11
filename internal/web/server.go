@@ -44,6 +44,8 @@ type Options struct {
 	MaxBytes   int64
 	// ReceiverURL is shown to the user: where their mitm has to send its traffic
 	ReceiverURL string
+	// Archive keeps saved requests past a restart. Without one they live in the log only
+	Archive Archive
 }
 
 type Server struct {
@@ -54,6 +56,10 @@ type Server struct {
 	static   map[string]staticFile
 	// lets browsers tell a reconnect from a restart
 	session string
+
+	archive Archive
+	// held while a saved request is written to or deleted from the archive
+	archiving sync.Mutex
 
 	// guards everything below. Nothing slow ever happens while it is held: records are only
 	// decoded by whoever writes them to a browser
@@ -79,6 +85,7 @@ func New(options Options) *Server {
 		options:  options,
 		auth:     newAuth(options.Password),
 		registry: pogo.Default(),
+		archive:  options.Archive,
 		session:  hex.EncodeToString(session),
 		store:    newStore(options.MaxRecords, options.MaxBytes),
 		clients:  map[*client]struct{}{},
@@ -158,34 +165,20 @@ func (s *Server) handleCommand(from *client, data []byte) {
 		return
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	switch command.Type {
 	case "pause":
+		s.mu.Lock()
+		defer s.mu.Unlock()
 		s.paused = truthy(command.Value)
 		s.broadcastMessage(fmt.Appendf(nil, `{"type":"state","paused":%t}`, s.paused))
 
 	case "save":
-		id, err := strconv.ParseUint(string(command.ID), 10, 64)
-		if err != nil {
-			return
+		if id, err := strconv.ParseUint(string(command.ID), 10, 64); err == nil {
+			s.setSaved(from, id, truthy(command.Value))
 		}
-		switch s.store.setSaved(id, truthy(command.Value)) {
-		case saveUnknown:
-			return
-		case saveTooMany:
-			from.push(notice(fmt.Sprintf("You can save at most %d requests", s.store.maxSaved())))
-			return
-		case saveTooBig:
-			from.push(notice("Saved requests can take at most half of the log's memory"))
-			return
-		}
-		s.broadcastMessage(fmt.Appendf(nil, `{"type":"save","id":%d,"value":%t}`, id, s.store.get(id).saved))
 
 	case "clear":
-		s.store.clear(truthy(command.Saved))
-		s.broadcast(event{kind: eventClear, records: s.store.snapshot()})
-		s.broadcastMessage(append(appendIDs([]byte(`{"type":"saved","ids":`), s.store.savedIDs()), '}'))
+		s.clear(from, truthy(command.Saved))
 	}
 }
 

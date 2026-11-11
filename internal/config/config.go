@@ -36,6 +36,10 @@ type Config struct {
 	// empty: no login
 	WebPassword string
 
+	// DatabaseURL names a MariaDB or MySQL database that keeps saved requests past a restart,
+	// i.e. mariadb://user:password@host:3306/database. Empty: they live in memory only
+	DatabaseURL string
+
 	// DebugAddr serves Go's profiler there, i.e. 127.0.0.1:6060, to see where memory and
 	// time go. Empty: off
 	DebugAddr string
@@ -109,6 +113,8 @@ func (c *Config) set(key string, value string) error {
 		c.WebMaxMemoryMB, err = integer(key, value)
 	case "web_password":
 		c.WebPassword = value
+	case "database_url":
+		c.DatabaseURL = strings.TrimSpace(value)
 	case "debug_addr":
 		c.DebugAddr = strings.TrimSpace(value)
 	}
