@@ -147,6 +147,9 @@ func parse(databaseURL string) (*mysql.Config, error) {
 	if config.WriteTimeout == 0 {
 		config.WriteTimeout = queryTimeout
 	}
+	// the driver prints what goes wrong on its own, on top of the errors it returns. Those
+	// are reported already, and while a database starts up it would print once a second
+	config.Logger = &mysql.NopLogger{}
 	return config, nil
 }
 

@@ -86,14 +86,15 @@ func (f *Forwarder) post(body []byte) {
 	reason := f.deliver(body)
 
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	f.inFlight--
-	f.done.Done()
 	if reason != "" {
 		f.markFailing(reason)
 	} else {
 		f.markWorking()
 	}
+	f.mu.Unlock()
+	// last, so whoever waits for this finds everything settled
+	f.done.Done()
 }
 
 // deliver returns why it didn't work, or nothing if it did
