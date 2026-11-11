@@ -3,10 +3,8 @@
 .idea*
 .venv
 .vscode
-**/__pycache__
-**/*.py[cod]
-build
-dist
 readme_assets
-# can contain your webhook
+**/testdata
+**/*_test.go
+# can contain your password
 config.toml

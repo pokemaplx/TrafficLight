@@ -6,28 +6,28 @@
 
 <p align="center">
   <strong>Beautiful traffic logging for PGO</strong><br />
-  Every request the game makes, decoded in real time, in your browser or your terminal.
+  Every request the game makes, decoded in real time, in your browser.
 </p>
 
 <p align="center">
-  <img alt="Python" src="https://img.shields.io/badge/python-3.11--3.13-3776AB?logo=python&logoColor=white" />
-  <img alt="Packaging" src="https://img.shields.io/badge/packaging-uv%20%C2%B7%20poetry-60A5FA?logo=poetry&logoColor=white" />
+  <img alt="Go" src="https://img.shields.io/badge/go-1.24+-00ADD8?logo=go&logoColor=white" />
   <img alt="Docker" src="https://img.shields.io/badge/docker-compose-2496ED?logo=docker&logoColor=white" />
-  <img alt="Outputs" src="https://img.shields.io/badge/outputs-web%20%C2%B7%20tui%20%C2%B7%20print%20%C2%B7%20discord-7FF0D4" />
+  <img alt="Outputs" src="https://img.shields.io/badge/outputs-web%20%C2%B7%20print-7FF0D4" />
 </p>
 
 <p align="center">
   <a href="#quick-start">Quick start</a> ·
   <a href="#the-web-ui">Web UI</a> ·
-  <a href="#the-terminal-ui">Terminal UI</a> ·
+  <a href="#memory">Memory</a> ·
   <a href="#configuration">Configuration</a> ·
   <a href="#installation">Installation</a> ·
   <a href="#writing-a-mitm">Writing a MITM</a>
 </p>
 
 > [!NOTE]
-> This is a modified fork of [ccev/TrafficLight](https://github.com/ccev/TrafficLight) with support for a
-> [web UI](#the-web-ui).
+> This is a fork of [ccev/TrafficLight](https://github.com/ccev/TrafficLight), rewritten in Go around a
+> [web UI](#the-web-ui). It takes the same traffic and the same `config.toml`, and runs in a fraction
+> of the [memory](#memory). The terminal UI and the Discord output of the original are not part of it.
 
 ![Web UI](readme_assets/web_ui.png)
 
@@ -36,29 +36,26 @@
 A MITM app on your phone POSTs every request the game makes to Traffic Light. Traffic Light decodes
 the protobufs and shows them as they arrive, so you can see exactly what is going on while you play.
 
-It comes as a CLI with a couple of extra utilities:
+It is a single binary with the web UI and the protos inside of it:
 
 | command | what it does |
 | --- | --- |
-| `trafficlight run` | start the receiver and the output you picked in your config |
-| `trafficlight show MESSAGENAME` | print the definition of any Message or Enum, with fuzzy matching |
+| `trafficlight` | start the receiver and the output you picked in your config |
+| `trafficlight healthcheck` | exit with 0 if a running Traffic Light takes requests |
 
 ## Quick start
 
 ```sh
-git clone https://github.com/ccev/TrafficLight && cd TrafficLight
-cp config.example.toml config.toml     # set output = "web"
-uv run trafficlight run
+git clone https://github.com/pokemaplx/TrafficLight && cd TrafficLight
+go run ./cmd/trafficlight
 ```
 
 The web UI opens at <http://127.0.0.1:3336>. Point your MITM's POST destination at
 `http://{your computer's IP}:3335` and traffic starts showing up.
 
-No uv? See [Installation](#installation) for pipx, Poetry and Docker.
+No Go? See [Installation](#installation) for Docker.
 
 ## The web UI
-
-Set `output = "web"` and Traffic Light opens a page in your browser instead of the terminal UI.
 
 The log lists one row per Proto, with the response status (`ENCOUNTER_SUCCESS`, `OUT_OF_RANGE`, …),
 the size, the time of day and how long after the request before it this one arrived. Click the
@@ -84,10 +81,11 @@ method was called so you can hide the noisy ones, or show only the one you care 
 
 ### Keeping requests
 
-The log only holds the newest `web_max_records` requests. **Save** one and it is never the one
-dropped, it survives **Clear**, and it stays inspectable for as long as Traffic Light runs. Press
-`b` or use the bookmark on the left of a row. At most half the limit can be saved, so there is
-always room for new traffic.
+The log only holds the newest requests: at most `web_max_records` of them, and at most
+`web_max_memory_mb` (see [Memory](#memory)). **Save** one and it is never the one dropped, it
+survives **Clear**, and it stays inspectable for as long as Traffic Light runs. Press `b` or use the
+bookmark on the left of a row. At most half of either limit can be saved, so there is always room
+for new traffic.
 
 ### Several Protos at once
 
@@ -141,31 +139,6 @@ A password is also what lets you open it through a domain. Without one, only loc
 addresses work, so no website can read your traffic through DNS rebinding. Behind a reverse proxy,
 keep the original Host header — Coolify and Caddy do, nginx needs `proxy_set_header Host $host;`.
 
-## The terminal UI
-
-The default output is a full UI in your terminal.
-
-![Main Window](readme_assets/tui_1.png)
-
-There's a log of all captured requests on the left. You can click on any Proto to open it in the
-Inspect View to analyze it further.
-
-![Command Input](readme_assets/tui_2.png)
-
-By pressing `>`, `ENTER` or `RETURN` (or by simply clicking on the left button) you enter the
-Command Input. Here you can choose between a set of useful controls, either by pressing the
-specified key or by clicking on it.
-
-- **Filters**
-  - **Text:** filters Method names, Message names and body. Also highlights the search string in Inspect View
-  - **Methods:** (with autocomplete!) filter by method names, i.e. `METHOD_FORT_DETAILS` or `SOCIAL_ACTION_GET_INBOX`
-  - **Messages:** (with autocomplete!) filter by message names, i.e. `GetMapObjectsProto` or `EncounterOutProto`
-- **Pause:** ignores incoming requests
-- **First Proto Only:** in most requests, only the first entry/"Proto" matters. This helps clear the clutter
-- **Follow:** scrolls the Log to show new incoming requests
-- **Empty Log:** clears the Log
-- **Copy Inspected:** copies the text from the Inspect View
-
 ## Forwarding
 
 Set `forward_url` and Traffic Light passes every request it receives on to that endpoint as well,
@@ -180,8 +153,34 @@ so once when forwarding starts failing, and once when it works again.
 
 ## Other outputs
 
-There's also an option to simply print all requests (`output = "print"`) or send them to Discord
-(`output = "discord"` with a `webhook`). You can use those if you don't like the UI.
+There's also an option to simply print all requests (`output = "print"`). You can use that if you
+don't like the UI.
+
+## Memory
+
+Traffic Light keeps the log in memory, and it only keeps what your MITM sent: the bytes of every
+request, still encoded. They are decoded when a browser lists them or when you inspect one, and
+what that takes is thrown away right after. So what Traffic Light uses is what its log weighs plus
+about 70 MB, and `web_max_memory_mb` decides what the log may weigh:
+
+| `web_max_memory_mb` | Traffic Light uses up to about |
+| --- | --- |
+| `64` | 130 MB |
+| `128` (default) | 200 MB |
+| `512` | 630 MB |
+
+When the log is full, the oldest request goes for every new one, like with `web_max_records`.
+Requests are a few hundred bytes to a few hundred KB each, so the default holds anything from a few
+hundred map responses to all 5000 requests. Traffic nobody is watching costs next to nothing: without
+a browser connected, a request is stored and that is it.
+
+To see where memory and time actually go, set `debug_addr = "127.0.0.1:6060"`. That serves Go's
+profiler:
+
+```sh
+go tool pprof http://127.0.0.1:6060/debug/pprof/heap      # what is in memory right now
+go tool pprof http://127.0.0.1:6060/debug/pprof/profile   # where 30 seconds of cpu went
+```
 
 ## Configuration
 
@@ -191,49 +190,40 @@ variable, i.e. `TRAFFICLIGHT_OUTPUT=web`, and those win over the file.
 | option | default | what it does |
 | --- | --- | --- |
 | `host` `port` | `0.0.0.0` `3335` | where the receiver listens for your MITM |
-| `output` | `ui` | `ui`, `web`, `print` or `discord` |
+| `output` | `web` | `web` or `print` |
 | `forward_url` | empty | also pass every request on to this endpoint |
 | `forward_token` | empty | bearer token sent with the forwarded request |
-| `webhook` | empty | Discord webhook, for `output = "discord"` |
 | `web_host` `web_port` | `127.0.0.1` `3336` | where the web UI listens. `0.0.0.0` opens it to your network |
 | `web_password` | empty | makes the web UI ask for a password |
 | `web_max_records` | `5000` | how many requests the web UI keeps |
+| `web_max_memory_mb` | `128` | how much the kept requests may weigh, see [Memory](#memory). `0` for no limit |
 | `web_open_browser` | `true` | open a browser when Traffic Light starts |
+| `debug_addr` | empty | serve Go's profiler there, i.e. `127.0.0.1:6060` |
 
 ## Installation
 
 Traffic Light is made to run on your own computer, next to the phone you are playing on.
 
-### pipx or uv
+### With Go
 
 ```sh
-pipx install git+https://github.com/ccev/TrafficLight
+go install github.com/pokemaplx/TrafficLight/cmd/trafficlight@latest
 ```
 
-pipx is the one to use — install it with `pip install pipx` if you don't have it, or use plain pip
-if you prefer. With [uv](https://docs.astral.sh/uv/), run `uv tool install` with the same URL.
-
-The `trafficlight` command is then on your PATH. Running it opens the receiver on port `3335`, and
-you can point a supported MITM at it.
+The `trafficlight` command is then in your Go bin directory. Running it opens the receiver on port
+`3335` and the web UI on `3336`, and you can point a supported MITM at it. It reads `config.toml`
+from the directory you run it in, and works without one.
 
 ### From a clone
 
-Clone the repo, copy `config.example.toml` to `config.toml` and fill it out. You need Python 3.11,
-3.12 or 3.13.
-
-With [uv](https://docs.astral.sh/uv/getting-started/installation/) — it installs everything and
-picks a fitting Python for you:
+Clone the repo and, if you want to change anything, copy `config.example.toml` to `config.toml`. You
+need Go 1.24 or newer.
 
 ```sh
-uv run trafficlight run
+go run ./cmd/trafficlight
 ```
 
-Or with [Poetry](https://python-poetry.org/docs/#installation):
-
-```sh
-poetry install
-poetry run trafficlight run
-```
+Or build the binary once and run that: `go build ./cmd/trafficlight`.
 
 Then set your MITM's POST destination to your endpoint from `config.toml`, by default
 `http://{computer IP}:3335`.
@@ -246,15 +236,16 @@ docker compose up --build
 
 The web UI is at <http://localhost:3336> and your MITM posts to `http://{computer IP}:3335`. Set any
 option from `config.example.toml` as an environment variable in `compose.yaml`, i.e.
-`TRAFFICLIGHT_OUTPUT=discord` and `TRAFFICLIGHT_WEBHOOK=...`, or mount your own `config.toml` the way
-that file shows.
+`TRAFFICLIGHT_WEB_PASSWORD=...`, or mount your own `config.toml` the way that file shows. The image
+is the binary and nothing else.
 
 ### Coolify
 
 - Create an application from this repository with the `Dockerfile` build pack
 - **Ports Exposes:** `3336`, the web UI that Coolify puts behind your domain
 - **Ports Mappings:** `3335:3335`, so your MITM can reach the receiver at `http://{server IP}:3335`
-- **Environment variables:** `TRAFFICLIGHT_WEB_PASSWORD`, since your domain is public
+- **Environment variables:** `TRAFFICLIGHT_WEB_PASSWORD`, since your domain is public, and
+  `TRAFFICLIGHT_WEB_MAX_MEMORY_MB` if the default of 128 is more than you want to give it
 
 ## Writing a MITM
 
@@ -281,24 +272,38 @@ the game makes. It should run alongside the game, so you can play normally while
 }
 ```
 
+`contents` instead of `protos`, `type` instead of `method` and `payload` instead of `response` are
+taken as well, which is what scanners like Golbat expect. A body can also be a list of these.
+
 ## Development
 
-The browser side is plain ES modules in `trafficlight/web/static/js` with no build step — edit a
-file and reload the page. They are type checked through JSDoc, and the server's record keeping has
-tests:
-
 ```sh
-npx tsc -p trafficlight/web/static/jsconfig.json
-uv run python tests/test_web_server.py
+go test ./...                                    # everything the server does
+go test -bench . ./internal/web ./internal/receiver
+npx tsc -p internal/web/static/jsconfig.json     # type checks the browser side
 ```
 
-## Terminal compatibility
+The browser side is plain ES modules in `internal/web/static/js` with no build step. They are built
+into the binary, so restart Traffic Light after editing one.
 
-The terminal UI uses [Textual](https://github.com/Textualize/textual). From their docs:
+`internal/pogo` is everything that knows the protos. Its tests compare what it says about a message
+with what the Python implementation this is a rewrite of said (`testdata/golden.jsonl.gz`), and what
+its fast path says with what protobuf's own decoder says, on valid and on broken bytes.
 
-> **Linux (all distros)** — all Linux distros come with a terminal emulator that can run Textual apps.
->
-> **macOS** — the default terminal app is limited to 256 colors. We recommend installing a newer
-> terminal such as iTerm2, Kitty, or WezTerm.
->
-> **Windows** — the new Windows Terminal runs Textual apps beautifully.
+### Updating the protos
+
+The protos are not generated code. Their descriptors are one file, `internal/pogo/pogo.desc`, which
+Traffic Light reads at startup. The original Traffic Light gets a new `pogo_pb2.py` with every
+version of the game, and that file is all it takes:
+
+```sh
+git fetch https://github.com/ccev/TrafficLight main
+git show FETCH_HEAD:trafficlight/protos/pogo_pb2.py > pogo_pb2.py
+go run ./cmd/protoupdate pogo_pb2.py
+```
+
+A descriptor set compiled from a `pogo.proto` with `protoc --descriptor_set_out` works as well.
+The file is checked before it is written, and Traffic Light has to be built again to use it.
+
+Until then, a method the protos don't know is listed as unknown with a best guess of its content,
+and a field they don't know is not shown.

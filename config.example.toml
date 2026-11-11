@@ -1,4 +1,4 @@
-# Every option can also be set as an environment variable, i.e. TRAFFICLIGHT_OUTPUT=web. Those win over this file
+# Every option can also be set as an environment variable, i.e. TRAFFICLIGHT_OUTPUT=print. Those win over this file
 
 host = "0.0.0.0"
 port = 3335
@@ -12,22 +12,23 @@ forward_token = ""
 # Forwarding is fire and forget: nothing is retried, and an endpoint that is down or slow never slows
 # down the receiver or your mitm
 
-output = "ui/web/print/discord"
-# ui      = cool interactive ui
-# web     = cool interactive ui in your browser
-# print   = simple log
-# discord = discord webhooks
-
-webhook = ""
-# your webhook url in case you set "discord" for output
+output = "web"
+# web   = cool interactive ui in your browser
+# print = simple log
 
 web_host = "127.0.0.1"
 web_port = 3336
-# Host and Port for the web ui in case you set "web" for output. Use "0.0.0.0" to open it from other devices
+# Host and Port for the web ui. Use "0.0.0.0" to open it from other devices
 web_open_browser = true
 # Open the web ui in your browser when Traffic Light starts
 web_max_records = 5000
-# How many requests the web ui keeps
+web_max_memory_mb = 128
+# The web ui keeps the newest requests: at most this many, and at most this much of them. Whichever
+# is reached first drops the oldest. Traffic Light itself takes about 70 MB on top of the log,
+# so this is what decides how much memory it uses. 0 turns the memory limit off
 web_password = ""
 # Makes the web ui ask for this password. Leave it empty to not ask for one.
 # Without a password, the web ui only opens through localhost or an IP address, not a domain
+
+debug_addr = ""
+# Serves Go's profiler there, i.e. "127.0.0.1:6060", to see where memory and time go. Leave it empty otherwise

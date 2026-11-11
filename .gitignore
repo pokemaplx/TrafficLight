@@ -1,8 +1,14 @@
 .idea*
 pogo.proto
+pogo_pb2.py
 config.toml
-test.py
-update_protos.py
+
+# what `go build` and the profiler leave behind
+/trafficlight
+/trafficlight.exe
+*.test
+*.test.exe
+*.prof
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

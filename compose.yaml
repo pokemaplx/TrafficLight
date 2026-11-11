@@ -8,9 +8,9 @@ services:
       - "127.0.0.1:3336:3336"
     # every option of config.toml works as an environment variable too
     # environment:
-    #   TRAFFICLIGHT_OUTPUT: discord
-    #   TRAFFICLIGHT_WEBHOOK: https://discord.com/api/webhooks/...
     #   TRAFFICLIGHT_WEB_PASSWORD: something-long
+    #   TRAFFICLIGHT_WEB_MAX_MEMORY_MB: 64
+    #   TRAFFICLIGHT_FORWARD_URL: http://golbat:9001/raw
     #   TZ: Europe/Lisbon
     # or use your config.toml
     # volumes:
