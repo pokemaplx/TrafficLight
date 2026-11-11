@@ -19,6 +19,7 @@
   <a href="#quick-start">Quick start</a> ·
   <a href="#the-web-ui">Web UI</a> ·
   <a href="#memory">Memory</a> ·
+  <a href="#protos">Protos</a> ·
   <a href="#configuration">Configuration</a> ·
   <a href="#installation">Installation</a> ·
   <a href="#writing-a-mitm">Writing a MITM</a>
@@ -192,6 +193,33 @@ go tool pprof http://127.0.0.1:6060/debug/pprof/heap      # what is in memory ri
 go tool pprof http://127.0.0.1:6060/debug/pprof/profile   # where 30 seconds of cpu went
 ```
 
+## Protos
+
+The game changes with every version, and Traffic Light can only decode what its protos describe.
+A method they don't know is listed as unknown with a best guess of its content, and a field they
+don't know is not shown.
+
+Traffic Light keeps them current by itself. At startup and every `protos_update_hours` after that
+it looks at `protos_url`, and when there is something new it switches to it while running: nothing
+is rebuilt or restarted, and the log stays. What it can't read, or what isn't a complete set of
+protos, is left alone and the ones in use stay. By default that is the `pogo_pb2.py` of the
+[original Traffic Light](https://github.com/ccev/TrafficLight), which gets the reverse-engineered
+protos of a new version some time after it comes out. Set `protos_url = ""` to not look anywhere.
+
+That gap is where `methods_url` helps. The names of a new version's methods can be read from
+the game itself the day it comes out, long before its protos are worked out. Point `methods_url`
+at a file or a URL with a list of them and Traffic Light names the methods the protos don't know
+yet, and uses the messages they mention where the protos have them:
+
+```json
+{"methods": [{"id": 106, "name": "METHOD_GET_MAP_OBJECTS",
+              "request_message": "holoholo.rpc.GetMapObjectsProto",
+              "response_message": "holoholo.rpc.GetMapObjectsOutProto"}]}
+```
+
+Where the protos know a method, they win. What a new method carries is still a best guess until its
+protos arrive: a name is all the game gives away about it.
+
 ## Configuration
 
 Copy `config.example.toml` to `config.toml`. Every option can also be set as an environment
@@ -208,6 +236,9 @@ variable, i.e. `TRAFFICLIGHT_OUTPUT=web`, and those win over the file.
 | `web_max_records` | `5000` | how many requests the web UI keeps |
 | `web_max_memory_mb` | `128` | how much the kept requests may weigh, see [Memory](#memory). `0` for no limit |
 | `web_open_browser` | `true` | open a browser when Traffic Light starts |
+| `protos_url` | the original Traffic Light's | where newer protos are looked for, see [Protos](#protos). Empty to not look |
+| `protos_update_hours` | `6` | how often. `0` looks at startup only |
+| `methods_url` | empty | a file or URL naming the methods the protos don't know yet |
 | `database_url` | empty | keep saved requests in this MariaDB or MySQL database, see [Keeping requests](#keeping-requests) |
 | `debug_addr` | empty | serve Go's profiler there, i.e. `127.0.0.1:6060` |
 
@@ -309,20 +340,13 @@ into the binary, so restart Traffic Light after editing one.
 with what the Python implementation this is a rewrite of said (`testdata/golden.jsonl.gz`), and what
 its fast path says with what protobuf's own decoder says, on valid and on broken bytes.
 
-### Updating the protos
+### Building with newer protos
 
-The protos are not generated code. Their descriptors are one file, `internal/pogo/pogo.desc`, which
-Traffic Light reads at startup. The original Traffic Light gets a new `pogo_pb2.py` with every
-version of the game, and that file is all it takes:
+The protos a build starts out with are `internal/pogo/pogo.desc`. A running Traffic Light replaces
+them by itself (see [Protos](#protos)), so this only matters for what is there before the first
+look, or with `protos_url` turned off:
 
 ```sh
-git fetch https://github.com/ccev/TrafficLight main
-git show FETCH_HEAD:trafficlight/protos/pogo_pb2.py > pogo_pb2.py
-go run ./cmd/protoupdate pogo_pb2.py
+go run ./cmd/protoupdate                       # the newest ones from the original Traffic Light
+go run ./cmd/protoupdate path/to/pogo_pb2.py   # or a file, or a descriptor set from protoc
 ```
-
-A descriptor set compiled from a `pogo.proto` with `protoc --descriptor_set_out` works as well.
-The file is checked before it is written, and Traffic Light has to be built again to use it.
-
-Until then, a method the protos don't know is listed as unknown with a best guess of its content,
-and a field they don't know is not shown.

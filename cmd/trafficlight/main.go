@@ -5,6 +5,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -149,6 +150,24 @@ func run() error {
 	}
 	if forwarder.Enabled() {
 		fmt.Printf("Forwarding everything to %s\n", cfg.ForwardURL)
+	}
+	if cfg.ProtosURL != "" || cfg.MethodsURL != "" {
+		// in the background: Traffic Light takes traffic right away, with the protos it was
+		// built with, and switches to newer ones as soon as it has them
+		updater := &pogo.Updater{
+			Protos:  cfg.ProtosURL,
+			Methods: cfg.MethodsURL,
+			Logf:    func(format string, args ...any) { fmt.Printf(format+"\n", args...) },
+		}
+		watching, stopWatching := context.WithCancel(context.Background())
+		defer stopWatching()
+		go updater.Run(watching, time.Duration(cfg.ProtosUpdateHours)*time.Hour)
+
+		if cfg.ProtosUpdateHours > 0 {
+			fmt.Printf("New protos are looked for every %d hours\n", cfg.ProtosUpdateHours)
+		} else {
+			fmt.Println("New protos are looked for now, and not again")
+		}
 	}
 	if cfg.DebugAddr != "" {
 		// what Go itself knows about where memory and time go:

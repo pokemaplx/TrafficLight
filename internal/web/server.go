@@ -49,11 +49,10 @@ type Options struct {
 }
 
 type Server struct {
-	options  Options
-	auth     *auth
-	registry *pogo.Registry
-	handler  http.Handler
-	static   map[string]staticFile
+	options Options
+	auth    *auth
+	handler http.Handler
+	static  map[string]staticFile
 	// lets browsers tell a reconnect from a restart
 	session string
 
@@ -82,13 +81,12 @@ func New(options Options) *Server {
 	_, _ = rand.Read(session)
 
 	s := &Server{
-		options:  options,
-		auth:     newAuth(options.Password),
-		registry: pogo.Default(),
-		archive:  options.Archive,
-		session:  hex.EncodeToString(session),
-		store:    newStore(options.MaxRecords, options.MaxBytes),
-		clients:  map[*client]struct{}{},
+		options: options,
+		auth:    newAuth(options.Password),
+		archive: options.Archive,
+		session: hex.EncodeToString(session),
+		store:   newStore(options.MaxRecords, options.MaxBytes),
+		clients: map[*client]struct{}{},
 	}
 	s.static = loadStatic()
 
@@ -275,7 +273,7 @@ func (s *Server) handleProto(w http.ResponseWriter, request *http.Request) {
 
 	buffer := getBuffer()
 	defer putBuffer(buffer)
-	*buffer = pogo.AppendDetail((*buffer)[:0], s.registry.Decode(record.Protos[index]))
+	*buffer = pogo.AppendDetail((*buffer)[:0], pogo.Default().Decode(record.Protos[index]))
 
 	out, done := compressed(w, request)
 	defer done()
@@ -379,11 +377,12 @@ func (s *Server) appendExport(dst []byte, record *Record) []byte {
 		dst = append(dst, "null"...)
 	}
 	dst = append(dst, `,"protos":[`...)
+	registry := pogo.Default()
 	for i := range record.Protos {
 		if i > 0 {
 			dst = append(dst, ',')
 		}
-		dst = pogo.AppendExport(dst, s.registry.Decode(record.Protos[i]))
+		dst = pogo.AppendExport(dst, registry.Decode(record.Protos[i]))
 	}
 	return append(dst, ']', '}')
 }

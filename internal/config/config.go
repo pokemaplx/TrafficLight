@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
+
+	"github.com/pokemaplx/TrafficLight/internal/pogo"
 )
 
 const envPrefix = "TRAFFICLIGHT_"
@@ -36,6 +38,15 @@ type Config struct {
 	// empty: no login
 	WebPassword string
 
+	// ProtosURL is where newer protos are looked for while Traffic Light runs, every
+	// ProtosUpdateHours and once at startup. Empty: the built in ones are all there is.
+	// 0 hours: only at startup
+	ProtosURL         string
+	ProtosUpdateHours int
+	// MethodsURL is a methods file, a url or a path: names for methods the protos don't
+	// know yet. Empty: none
+	MethodsURL string
+
 	// DatabaseURL names a MariaDB or MySQL database that keeps saved requests past a restart,
 	// i.e. mariadb://user:password@host:3306/database. Empty: they live in memory only
 	DatabaseURL string
@@ -55,6 +66,9 @@ func defaults() *Config {
 		WebOpenBrowser: true,
 		WebMaxRecords:  5000,
 		WebMaxMemoryMB: 128,
+
+		ProtosURL:         pogo.UpstreamProtos,
+		ProtosUpdateHours: 6,
 	}
 }
 
@@ -113,6 +127,12 @@ func (c *Config) set(key string, value string) error {
 		c.WebMaxMemoryMB, err = integer(key, value)
 	case "web_password":
 		c.WebPassword = value
+	case "protos_url":
+		c.ProtosURL = strings.TrimSpace(value)
+	case "protos_update_hours":
+		c.ProtosUpdateHours, err = integer(key, value)
+	case "methods_url":
+		c.MethodsURL = strings.TrimSpace(value)
 	case "database_url":
 		c.DatabaseURL = strings.TrimSpace(value)
 	case "debug_addr":
@@ -137,6 +157,9 @@ func (c *Config) validate() error {
 	}
 	if c.WebMaxRecords < 1 {
 		return fmt.Errorf("web_max_records = %d has to be at least 1", c.WebMaxRecords)
+	}
+	if c.ProtosUpdateHours < 0 {
+		return fmt.Errorf("protos_update_hours = %d can't be negative, 0 looks for new protos at startup only", c.ProtosUpdateHours)
 	}
 	if c.WebMaxMemoryMB < 0 {
 		return fmt.Errorf("web_max_memory_mb = %d can't be negative, 0 turns the limit off", c.WebMaxMemoryMB)

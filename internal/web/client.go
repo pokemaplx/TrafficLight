@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+
+	"github.com/pokemaplx/TrafficLight/internal/pogo"
 )
 
 const (
@@ -293,11 +295,13 @@ func (s *Server) appendRecord(dst []byte, record *Record) (out []byte) {
 		}
 	}()
 	out = dst
+	// whatever protos are in use right now: newer ones can arrive while Traffic Light runs
+	registry := pogo.Default()
 	for i := range record.Protos {
 		if i > 0 {
 			out = append(out, ',')
 		}
-		out = s.registry.AppendSummary(out, record.Protos[i])
+		out = registry.AppendSummary(out, record.Protos[i])
 	}
 	return append(out, ']', '}')
 }

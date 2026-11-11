@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protodesc"
@@ -39,23 +40,61 @@ type Registry struct {
 	proxyResponse protoreflect.MessageDescriptor
 
 	messages int
+	// methods that only have a name because a methods file gave them one, and methods that
+	// only have their messages because it did
+	named  int
+	mapped int
 }
 
-var defaultRegistry = sync.OnceValue(func() *Registry {
-	registry, err := Load(embedded)
-	if err != nil {
-		panic("the built in protos are broken: " + err.Error())
-	}
-	return registry
-})
+var (
+	current     atomic.Pointer[Registry]
+	loadDefault sync.Once
+)
 
-// Default is the registry of the protos Traffic Light was built with
+// Default is the registry in use: the protos Traffic Light was built with, until newer ones
+// replace them (see Updater)
 func Default() *Registry {
-	return defaultRegistry()
+	loadDefault.Do(func() {
+		if current.Load() != nil {
+			return
+		}
+		registry, err := Load(embedded)
+		if err != nil {
+			panic("the built in protos are broken: " + err.Error())
+		}
+		current.Store(registry)
+	})
+	return current.Load()
+}
+
+// SetDefault replaces the registry in use. Whoever is decoding with the old one finishes
+// with it
+func SetDefault(registry *Registry) {
+	current.Store(registry)
+}
+
+// Embedded is the descriptor of the protos Traffic Light was built with
+func Embedded() []byte {
+	return embedded
+}
+
+// Method is what a methods file says about a method: its name, and the messages it uses
+type Method struct {
+	ID       int32  `json:"id"`
+	Name     string `json:"name"`
+	Request  string `json:"request_message"`
+	Response string `json:"response_message"`
 }
 
 // Load builds a registry from a serialized FileDescriptorProto
 func Load(descriptor []byte) (*Registry, error) {
+	return LoadWith(descriptor, nil)
+}
+
+// LoadWith builds a registry and fills its gaps with what a methods file knows. A new version
+// of the game brings new methods, and their names can be read from the game itself long
+// before anyone has worked out the protos. The protos win wherever they know a method.
+func LoadWith(descriptor []byte, methods []Method) (*Registry, error) {
 	fileProto := &descriptorpb.FileDescriptorProto{}
 	if err := proto.Unmarshal(descriptor, fileProto); err != nil {
 		return nil, err
@@ -107,7 +146,37 @@ func Load(descriptor []byte) (*Registry, error) {
 			}
 		}
 	}
+
+	for _, method := range methods {
+		if method.Name != "" {
+			if _, known := registry.methods[method.ID]; !known {
+				registry.methods[method.ID] = method.Name
+				registry.named++
+			}
+		}
+		// the messages are named with the game's own package, holoholo.rpc.FooProto
+		mapped := false
+		if _, known := registry.requests[method.ID]; !known {
+			if message := file.Messages().ByName(shortName(method.Request)); message != nil {
+				registry.requests[method.ID] = message
+				mapped = true
+			}
+		}
+		if _, known := registry.responses[method.ID]; !known {
+			if message := file.Messages().ByName(shortName(method.Response)); message != nil {
+				registry.responses[method.ID] = message
+				mapped = true
+			}
+		}
+		if mapped {
+			registry.mapped++
+		}
+	}
 	return registry, nil
+}
+
+func shortName(fullName string) protoreflect.Name {
+	return protoreflect.Name(fullName[strings.LastIndexByte(fullName, '.')+1:])
 }
 
 func messagesByNumber(listing protoreflect.MessageDescriptor) map[int32]protoreflect.MessageDescriptor {
@@ -124,8 +193,15 @@ func messagesByNumber(listing protoreflect.MessageDescriptor) map[int32]protoref
 // Messages is how many top level messages the protos define
 func (r *Registry) Messages() int { return r.messages }
 
-// Methods is how many methods the protos know by name
+// Methods is how many methods are known by name
 func (r *Registry) Methods() int { return len(r.methods) }
+
+// Named is how many of those the protos don't know: a methods file named them
+func (r *Registry) Named() int { return r.named }
+
+// Mapped is how many methods got a message from a methods file that the protos have, but
+// not under that method
+func (r *Registry) Mapped() int { return r.mapped }
 
 func (r *Registry) methodName(value int64) (string, bool) {
 	if value != int64(int32(value)) {

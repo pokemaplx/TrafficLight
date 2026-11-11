@@ -30,6 +30,15 @@ web_password = ""
 # Makes the web ui ask for this password. Leave it empty to not ask for one.
 # Without a password, the web ui only opens through localhost or an IP address, not a domain
 
+protos_url = "https://raw.githubusercontent.com/ccev/TrafficLight/main/trafficlight/protos/pogo_pb2.py"
+protos_update_hours = 6
+# Traffic Light looks for newer protos there at startup and every so many hours, and switches to them
+# while it runs. Leave protos_url empty to stay with the ones it was built with, and set the hours
+# to 0 to only look at startup
+methods_url = ""
+# A file or url with the names of the game's methods, for the ones the protos don't know yet:
+# {"methods": [{"id": 106, "name": "METHOD_GET_MAP_OBJECTS", "request_message": "...", "response_message": "..."}]}
+
 database_url = ""
 # Keeps the requests you save in a MariaDB or MySQL database, so they are still there after a restart,
 # i.e. "mariadb://user:password@127.0.0.1:3306/trafficlight". Special characters in the password have
